@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../store.jsx';
-import { api, STANJA, km } from '../api.js';
+import { api, STANJA, km, dioUrl } from '../api.js';
 import * as I from './Ikone.jsx';
 
 export function Mrvice({ stavke }) {
@@ -23,20 +23,20 @@ export function Stanje({ s }) {
 }
 
 export function DioKartica({ d }) {
-  const { cijena, jeSacuvan, prebaciSacuvano } = useApp();
+  const { cijenaDijela, jeSacuvan, prebaciSacuvano } = useApp();
   const sac = jeSacuvan(d.id);
   return (
     <div className="kartica dio-kartica">
-      <Link to={`/dio/${d.id}`} style={{ color: 'inherit', display: 'contents' }}>
+      <Link to={dioUrl(d)} style={{ color: 'inherit', display: 'contents' }}>
         <div className="dio-slika">{d.slika ? <img src={d.slika} alt={d.naziv} loading="lazy" /> : <I.Dio />}</div>
         <div className="dio-tijelo">
-          <Stanje s={d.stanje} />
+          <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><Stanje s={d.stanje} />{d.izdvojen && <span className="oznaka-stanja izdvojeno">★ Izdvojeno</span>}</span>
           <div className="dio-naziv">{d.naziv}</div>
           <div className="dio-vozilo">{[d.marka, d.generacija].filter(Boolean).join(' ')}{d.godiste ? ` · ${d.godiste}` : ''}</div>
           {d.oem && <div className="dio-oem">{d.oem}</div>}
           {d.km ? <div className="dio-vozilo">{km(d.km)}</div> : null}
           <div className="dio-dno">
-            <span className="cijena">{cijena(d.cijena_km)}</span>
+            <span className={`cijena ${d.cijena_km > 0 ? '' : 'na-upit'}`}>{cijenaDijela(d.cijena_km)}</span>
             <span className="grad">{d.otpad}<br />{d.grad}</span>
           </div>
         </div>
@@ -102,6 +102,17 @@ export function UpitForma({ dio, otpadId, onGotovo }) {
       {greska && <div className="greska">{greska}</div>}
       <button className="dugme puno" style={{ marginTop: 14 }} disabled={salje}>{salje ? 'Šaljem…' : 'Pošalji upit'}</button>
     </form>
+  );
+}
+
+export function Zvjezdice({ ocjene, malo }) {
+  if (!ocjene?.broj) return null;
+  const p = Number(ocjene.prosjek);
+  return (
+    <span className={`zvjezdice ${malo ? 'malo' : ''}`} title={`${p} od 5`}>
+      <span className="zv">{'★'.repeat(Math.round(p))}<span className="prazne">{'★'.repeat(5 - Math.round(p))}</span></span>
+      {p.toFixed(1)} ({ocjene.broj})
+    </span>
   );
 }
 

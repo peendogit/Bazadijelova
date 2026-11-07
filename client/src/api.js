@@ -1,4 +1,6 @@
 export const KURS_EUR = 1.95583;
+export const SRBIJA = typeof location !== 'undefined' && location.hostname.includes('bazadelova');
+export const IME_SAJTA = SRBIJA ? 'bazadelova' : 'bazadijelova';
 
 function token() {
   try { return localStorage.getItem('bd_token'); } catch { return null; }
@@ -36,6 +38,11 @@ export const STANJA = {
   B: { naziv: 'Dobro', opis: 'Ispravno, sitni tragovi korištenja' },
   C: { naziv: 'Oštećeno', opis: 'Ima oštećenja, opisano u oglasu' },
 };
+
+export const slug = (s) => String(s || '').toLowerCase()
+  .replace(/[čć]/g, 'c').replace(/đ/g, 'dj').replace(/š/g, 's').replace(/ž/g, 'z')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+export const dioUrl = (d) => `/dio/${d.id}-${slug([d.naziv, d.marka, d.generacija].filter(Boolean).join(' '))}`;
 
 export function km(n) {
   if (n === null || n === undefined) return null;

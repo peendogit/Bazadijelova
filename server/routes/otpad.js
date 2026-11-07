@@ -8,6 +8,9 @@ import { q, transakcija } from '../db/index.js';
 import { asyncH, int, normOem } from '../lib/util.js';
 import { uloga } from '../lib/auth.js';
 import { parsirajCsv, uveziDijelove } from '../lib/uvoz.js';
+import { stanjePaketa, POSTAVKE } from '../lib/paket.js';
+import { BOT_IME, ukljucen as tgUkljucen, noviKod, posalji, poruke } from '../lib/telegram.js';
+import { sinhronizujOtpad } from '../lib/izvor.js';
 
 const r = Router();
 r.use(uloga('otpad', 'admin'));
@@ -40,7 +43,73 @@ r.get('/profil', asyncH(async (req, res) => {
            (SELECT COUNT(*)::int FROM upiti WHERE otpad_id = $1 AND status = 'novi') novih_upita,
            (SELECT COUNT(*)::int FROM narudzbe WHERE otpad_id = $1 AND status = 'nova') novih_narudzbi
     FROM dijelovi WHERE otpad_id = $1`, [otpadId(req)]);
-  res.json({ ...o, statistika: s });
+  const paket = await stanjePaketa(otpadId(req));
+  const { izvor_kljuc, telegram_kod, ...ostalo } = o;
+  res.json({
+    ...ostalo, statistika: s,
+    paket: { ...paket, slobodno: paket.slobodno === Infinity ? null : paket.slobodno, ...POSTAVKE() },
+    telegram: { ukljucen: tgUkljucen(), povezan: !!o.telegram_chat_id, bot: BOT_IME() },
+    izvor: { povezan: !!(o.izvor_url && izvor_kljuc), url: o.izvor_url, zadnje: o.izvor_zadnje, greska: o.izvor_greska },
+  });
+}));
+
+// ---------- Telegram ----------
+
+r.post('/telegram', asyncH(async (req, res) => {
+  if (!tgUkljucen()) return res.status(400).json({ greska: 'Telegram bot nije podešen na serveru (TELEGRAM_BOT_TOKEN).' });
+  const kod = noviKod();
+  await q(`UPDATE otpadi SET telegram_kod = $2 WHERE id = $1`, [otpadId(req), kod]);
+  res.json({ link: `https://t.me/${BOT_IME()}?start=${kod}` });
+}));
+
+r.post('/telegram/test', asyncH(async (req, res) => {
+  const { rows: [o] } = await q(`SELECT telegram_chat_id FROM otpadi WHERE id = $1`, [otpadId(req)]);
+  const ok = await posalji(o?.telegram_chat_id, '🔔 Test poruka sa bazadijelova. Obavještenja rade.');
+  res.json({ ok });
+}));
+
+r.delete('/telegram', asyncH(async (req, res) => {
+  await q(`UPDATE otpadi SET telegram_chat_id = NULL WHERE id = $1`, [otpadId(req)]);
+  res.json({ ok: true });
+}));
+
+// ---------- Povezivanje s programom (shop-api) ----------
+
+r.put('/izvor', asyncH(async (req, res) => {
+  const url = String(req.body?.url || '').trim().replace(/\/+$/, '');
+  const kljuc = String(req.body?.kljuc || '').trim();
+  if (!url) {
+    await q(`UPDATE otpadi SET izvor_url = NULL, izvor_kljuc = NULL, izvor_greska = NULL WHERE id = $1`, [otpadId(req)]);
+    return res.json({ ok: true });
+  }
+  if (!/^https?:\/\//.test(url)) return res.status(400).json({ greska: 'Adresa mora počinjati sa http:// ili https://' });
+  await q(`UPDATE otpadi SET izvor_url = $2, izvor_kljuc = COALESCE(NULLIF($3, ''), izvor_kljuc) WHERE id = $1`, [otpadId(req), url, kljuc]);
+  try {
+    const rez = await sinhronizujOtpad(otpadId(req));
+    res.json({ ok: true, ...rez });
+  } catch (e) { res.status(400).json({ greska: e.message }); }
+}));
+
+r.post('/izvor/sada', asyncH(async (req, res) => {
+  try { res.json(await sinhronizujOtpad(otpadId(req))); }
+  catch (e) { res.status(400).json({ greska: e.message }); }
+}));
+
+// ---------- Izdvajanje (Pro) ----------
+
+r.post('/dijelovi/:id/izdvoji', asyncH(async (req, res) => {
+  const p = await stanjePaketa(otpadId(req));
+  const ukloni = req.body?.ukloni === true;
+  if (!ukloni) {
+    if (!p.pro) return res.status(403).json({ greska: 'Izdvajanje je dio Pro paketa.' });
+    if (p.izdvojenih >= p.izdvojeni_limit) return res.status(400).json({ greska: `Već imate ${p.izdvojenih} izdvojenih dijelova (najviše ${p.izdvojeni_limit}).` });
+  }
+  const { rows: [d] } = await q(
+    `UPDATE dijelovi SET izdvojen_do = ${ukloni ? 'NULL' : `NOW() + ($3 || ' days')::interval`}
+     WHERE id = $1 AND otpad_id = $2 RETURNING id, izdvojen_do`,
+    ukloni ? [int(req.params.id), otpadId(req)] : [int(req.params.id), otpadId(req), String(POSTAVKE().izdvojeno_dana)]);
+  if (!d) return res.status(404).json({ greska: 'Dio nije pronađen.' });
+  res.json(d);
 }));
 
 r.put('/profil', asyncH(async (req, res) => {
@@ -99,6 +168,9 @@ function poljaDijela(b) {
 r.post('/dijelovi', asyncH(async (req, res) => {
   const v = poljaDijela(req.body || {});
   if (!v[3]) return res.status(400).json({ greska: 'Unesite naziv dijela.' });
+  const paket = await stanjePaketa(otpadId(req));
+  if (paket.slobodno <= 0)
+    return res.status(403).json({ greska: `Besplatni paket dozvoljava ${paket.limit} dijelova u prodaji. Za više pređite na Pro paket.` });
   const { rows: [d] } = await q(
     `INSERT INTO dijelovi (otpad_id, marka_id, generacija_id, kategorija_id, naziv, oem, oem_norm, stanje, km, godiste,
        motor, gorivo, vin_donora, cijena_km, kolicina, slike, opis, vanjska_sifra)
@@ -181,6 +253,46 @@ r.put('/narudzbe/:id', asyncH(async (req, res) => {
   });
   if (!n) return res.status(404).json({ greska: 'Narudžba nije pronađena.' });
   res.json(n);
+}));
+
+// ---------- Zahtjevi kupaca ("Tražim dio") ----------
+
+r.get('/zahtjevi', asyncH(async (req, res) => {
+  const { rows } = await q(`
+    SELECT z.id, z.naziv, z.godiste, z.motor, z.oem, z.opis, z.grad, z.kreiran, m.naziv marka, g.naziv generacija, mo.naziv model,
+      p.id ponuda_id, p.cijena_km ponuda_cijena, p.poruka ponuda_poruka,
+      (SELECT COUNT(*)::int FROM ponude x WHERE x.zahtjev_id = z.id) broj_ponuda,
+      (SELECT json_agg(json_build_object('id', d.id, 'naziv', d.naziv, 'cijena_km', d.cijena_km, 'oem', d.oem))
+       FROM (SELECT d.id, d.naziv, d.cijena_km, d.oem FROM dijelovi d
+             WHERE d.otpad_id = $1 AND d.status = 'aktivan'
+               AND ((z.generacija_id IS NOT NULL AND d.generacija_id = z.generacija_id) OR (z.oem IS NOT NULL AND d.oem_norm = upper(regexp_replace(z.oem, '[^A-Za-z0-9]', '', 'g'))))
+             LIMIT 5) d) moguci
+    FROM zahtjevi z
+    LEFT JOIN marke m ON m.id = z.marka_id LEFT JOIN generacije g ON g.id = z.generacija_id LEFT JOIN modeli mo ON mo.id = g.model_id
+    LEFT JOIN ponude p ON p.zahtjev_id = z.id AND p.otpad_id = $1
+    WHERE z.status = 'otvoren' AND z.istice > NOW()
+    ORDER BY (p.id IS NULL) DESC, z.kreiran DESC LIMIT 100`, [otpadId(req)]);
+  res.json(rows);
+}));
+
+r.post('/zahtjevi/:id/ponuda', asyncH(async (req, res) => {
+  const { cijena_km, poruka, dio_id, stanje } = req.body || {};
+  if (!cijena_km && !poruka) return res.status(400).json({ greska: 'Unesite cijenu ili poruku.' });
+  const { rows: [z] } = await q(`SELECT * FROM zahtjevi WHERE id = $1 AND status = 'otvoren'`, [int(req.params.id)]);
+  if (!z) return res.status(404).json({ greska: 'Zahtjev više nije otvoren.' });
+  const { rows: [p] } = await q(
+    `INSERT INTO ponude (zahtjev_id, otpad_id, dio_id, cijena_km, stanje, poruka) VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (zahtjev_id, otpad_id) DO UPDATE SET dio_id = EXCLUDED.dio_id, cijena_km = EXCLUDED.cijena_km,
+       stanje = EXCLUDED.stanje, poruka = EXCLUDED.poruka, kreiran = NOW()
+     RETURNING *`,
+    [z.id, otpadId(req), int(dio_id), cijena_km ? Number(cijena_km) : null,
+     ['A', 'B', 'C', 'N'].includes(stanje) ? stanje : null, poruka ? String(poruka).slice(0, 1000) : null]);
+  if (z.korisnik_id) {
+    const { rows: [k] } = await q(`SELECT telegram_chat_id FROM korisnici WHERE id = $1`, [z.korisnik_id]);
+    const { rows: [o] } = await q(`SELECT naziv FROM otpadi WHERE id = $1`, [otpadId(req)]);
+    posalji(k?.telegram_chat_id, poruke.ponuda(p, o.naziv, z));
+  }
+  res.json(p);
 }));
 
 // ---------- Uvoz zaliha ----------

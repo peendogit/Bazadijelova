@@ -2,6 +2,7 @@
 // Svaki red se upari po "sifra" (šifra dijela u programu otpada): postoji → ažurira, ne postoji → dodaje.
 // Sa opcijom "potpuno" svi dijelovi otpada kojih nema u uvozu označe se kao prodani.
 import { slugify, normOem } from './util.js';
+import { stanjePaketa } from './paket.js';
 
 // Prihvata različite nazive kolona
 const ALIASI = {
@@ -155,24 +156,41 @@ function broj(v) {
 
 export async function uveziDijelove(db, otpadId, redovi, { izvor = 'csv', potpuno = false } = {}) {
   const kat = await ucitajKatalog(db);
-  const rez = { novih: 0, azuriranih: 0, prodanih: 0, gresaka: 0, greske: [] };
+  const rez = { novih: 0, azuriranih: 0, prodanih: 0, gresaka: 0, preko_limita: 0, greske: [] };
+  // Besplatni paket: ograničen broj aktivnih dijelova
+  const paket = await stanjePaketa(otpadId, db);
+  let slobodno = paket.slobodno;
+  const { rows: aktivne } = await db.query(
+    `SELECT vanjska_sifra FROM dijelovi WHERE otpad_id = $1 AND status IN ('aktivan','rezervisan') AND vanjska_sifra IS NOT NULL`, [otpadId]);
+  const aktivneSifre = new Set(aktivne.map((a) => a.vanjska_sifra));
+  if (potpuno && !paket.pro) {
+    // Cijelo stanje stiže u uvozu: limit se računa samo na dijelove iz uvoza + ručno unesene (bez šifre)
+    const { rows: [{ n }] } = await db.query(
+      `SELECT COUNT(*)::int n FROM dijelovi WHERE otpad_id = $1 AND status IN ('aktivan','rezervisan') AND vanjska_sifra IS NULL`, [otpadId]);
+    slobodno = Math.max(0, paket.limit - n);
+    aktivneSifre.clear();
+  }
   const videneSifre = [];
 
   for (const [i, sirovo] of redovi.entries()) {
     const r = normalizujRed(sirovo);
     const brojReda = i + 2; // +1 zaglavlje, +1 jer redovi počinju od 1
     if (!r.naziv) { rez.gresaka++; rez.greske.push(`Red ${brojReda}: nema naziva dijela`); continue; }
-    const cijena = broj(r.cijena);
-    if (cijena === null) { rez.gresaka++; rez.greske.push(`Red ${brojReda}: nema cijene (${r.naziv})`); continue; }
+    const cijena = broj(r.cijena) ?? 0; // bez cijene = "cijena na upit"
 
     const sifra = r.sifra || `${normOem(r.oem)}-${slugify(r.naziv)}`.slice(0, 120);
-    videneSifre.push(sifra);
     const marka = nadjiMarku(kat, r.marka);
     const genId = nadjiGeneraciju(kat, marka?.id, r);
     const katId = nadjiKategoriju(kat, r.kategorija, r.naziv);
     const stanjeSirovo = String(r.stanje || 'B').toUpperCase();
     const stanje = ['A', 'B', 'C', 'N'].includes(stanjeSirovo[0]) ? stanjeSirovo[0] : 'B';
     const kolicina = Math.max(0, Math.round(broj(r.kolicina) ?? 1));
+    if (kolicina > 0 && !aktivneSifre.has(sifra)) {
+      if (slobodno <= 0) { rez.preko_limita++; continue; }
+      slobodno--;
+      aktivneSifre.add(sifra);
+    }
+    videneSifre.push(sifra);
     const slike = Array.isArray(r.slike)
       ? r.slike
       : String(r.slike || '').split(/[|\s,]+/).filter((u) => /^https?:\/\//.test(u));
@@ -207,6 +225,7 @@ export async function uveziDijelove(db, otpadId, redovi, { izvor = 'csv', potpun
     rez.prodanih = rowCount;
   }
 
+  if (rez.preko_limita) rez.greske.unshift(`${rez.preko_limita} dijelova nije dodano: dostignut limit besplatnog paketa (${paket.limit}).`);
   rez.greske = rez.greske.slice(0, 50);
   await db.query(
     `INSERT INTO uvozi (otpad_id, izvor, novih, azuriranih, prodanih, gresaka, greske) VALUES ($1,$2,$3,$4,$5,$6,$7)`,

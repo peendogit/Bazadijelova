@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useApp } from '../store.jsx';
-import { Mrvice, Modal, UpitForma, Ucitavanje } from '../components/Zajednicko.jsx';
+import { Mrvice, Modal, UpitForma, Ucitavanje, Zvjezdice } from '../components/Zajednicko.jsx';
 import { ListaDijelova } from './Dijelovi.jsx';
 import * as I from '../components/Ikone.jsx';
 
@@ -21,7 +21,7 @@ export function Otpadi() {
             <Link key={o.id} to={`/otpad/${o.slug}`} className="otpad-kartica" style={{ color: 'inherit' }}>
               <div className="otpad-ikona">{o.naziv[0]}</div>
               <div style={{ flex: 1 }}>
-                <b>{o.naziv}</b>
+                <b>{o.naziv}</b> <Zvjezdice ocjene={o.ocjene} malo />
                 <div className="tiho malo">{o.grad} · {o.broj.toLocaleString('bs-BA')} dijelova · dostava {cijena(o.dostava_cijena_km)}</div>
               </div>
             </Link>
@@ -49,6 +49,7 @@ export function Otpad() {
           <div className="otpad-ikona">{o.naziv[0]}</div>
           <div style={{ flex: 1 }}>
             <h1 style={{ marginBottom: 4 }}>{o.naziv}</h1>
+            <Zvjezdice ocjene={o.ocjene} />
             <div className="red-info"><I.Lokacija />{[o.adresa, o.grad].filter(Boolean).join(', ')}</div>
             {o.telefon && <div className="red-info"><I.Telefon /><a href={`tel:${o.telefon}`}>{o.telefon}</a></div>}
             <div className="red-info"><I.Kamion />Dostava {cijena(o.dostava_cijena_km)}{o.licno_preuzimanje ? ' · lično preuzimanje' : ''}</div>
@@ -58,6 +59,20 @@ export function Otpad() {
         </div>
       </div>
       <ListaDijelova fiksno={{ otpad: o.slug }} />
+      {o.recenzije?.length > 0 && (
+        <div className="kartica kartica-tijelo odjeljak">
+          <h2>Ocjene kupaca</h2>
+          <div className="lista-stavki">
+            {o.recenzije.map((r, i) => (
+              <div key={i}>
+                <span className="zvjezdice"><span className="zv">{'★'.repeat(r.ocjena)}<span className="prazne">{'★'.repeat(5 - r.ocjena)}</span></span></span>
+                <span className="tiho malo"> {r.ime} · {new Date(r.kreiran).toLocaleDateString('bs-BA')}</span>
+                {r.komentar && <p style={{ margin: '4px 0 0' }}>{r.komentar}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {upit && <Modal naslov={`Upit: ${o.naziv}`} onZatvori={() => setUpit(false)}><UpitForma otpadId={o.id} onGotovo={() => setUpit(false)} /></Modal>}
     </>
   );

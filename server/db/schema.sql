@@ -150,3 +150,63 @@ CREATE TABLE IF NOT EXISTS uvozi (
   greske     TEXT[] DEFAULT '{}',
   kreiran    TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ===== v2.1: povezivanje programa, Telegram, paketi, izdvajanje, ocjene, zahtjevi =====
+
+ALTER TABLE otpadi ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+ALTER TABLE otpadi ADD COLUMN IF NOT EXISTS telegram_kod TEXT;
+ALTER TABLE otpadi ADD COLUMN IF NOT EXISTS paket TEXT NOT NULL DEFAULT 'besplatno';
+ALTER TABLE otpadi ADD COLUMN IF NOT EXISTS paket_do DATE;
+ALTER TABLE otpadi ADD COLUMN IF NOT EXISTS izvor_url TEXT;        -- adresa programa otpada (shop-api)
+ALTER TABLE otpadi ADD COLUMN IF NOT EXISTS izvor_kljuc TEXT;
+ALTER TABLE otpadi ADD COLUMN IF NOT EXISTS izvor_zadnje TIMESTAMPTZ;
+ALTER TABLE otpadi ADD COLUMN IF NOT EXISTS izvor_greska TEXT;
+
+ALTER TABLE dijelovi ADD COLUMN IF NOT EXISTS izdvojen_do TIMESTAMPTZ;
+ALTER TABLE narudzbe ADD COLUMN IF NOT EXISTS token TEXT;
+ALTER TABLE korisnici ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+
+CREATE TABLE IF NOT EXISTS ocjene (
+  id          SERIAL PRIMARY KEY,
+  otpad_id    INTEGER NOT NULL REFERENCES otpadi(id) ON DELETE CASCADE,
+  narudzba_id INTEGER UNIQUE REFERENCES narudzbe(id) ON DELETE SET NULL,
+  ocjena      INTEGER NOT NULL CHECK (ocjena BETWEEN 1 AND 5),
+  komentar    TEXT,
+  ime         TEXT,
+  kreiran     TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ocjene_otpad ON ocjene(otpad_id);
+
+-- "Tražim dio": kupac objavi šta mu treba, otpadi šalju ponude
+CREATE TABLE IF NOT EXISTS zahtjevi (
+  id            SERIAL PRIMARY KEY,
+  token         TEXT UNIQUE NOT NULL,
+  korisnik_id   INTEGER REFERENCES korisnici(id) ON DELETE SET NULL,
+  ime           TEXT NOT NULL,
+  telefon       TEXT,
+  email         TEXT,
+  naziv         TEXT NOT NULL,
+  marka_id      INTEGER REFERENCES marke(id),
+  generacija_id INTEGER REFERENCES generacije(id),
+  godiste       INTEGER,
+  motor         TEXT,
+  oem           TEXT,
+  opis          TEXT,
+  grad          TEXT,
+  status        TEXT NOT NULL DEFAULT 'otvoren' CHECK (status IN ('otvoren','zatvoren')),
+  kreiran       TIMESTAMPTZ DEFAULT NOW(),
+  istice        TIMESTAMPTZ DEFAULT NOW() + INTERVAL '30 days'
+);
+CREATE INDEX IF NOT EXISTS idx_zahtjevi_status ON zahtjevi(status, kreiran DESC);
+
+CREATE TABLE IF NOT EXISTS ponude (
+  id          SERIAL PRIMARY KEY,
+  zahtjev_id  INTEGER NOT NULL REFERENCES zahtjevi(id) ON DELETE CASCADE,
+  otpad_id    INTEGER NOT NULL REFERENCES otpadi(id) ON DELETE CASCADE,
+  dio_id      INTEGER REFERENCES dijelovi(id) ON DELETE SET NULL,
+  cijena_km   NUMERIC(10,2),
+  stanje      TEXT CHECK (stanje IN ('A','B','C','N')),
+  poruka      TEXT,
+  kreiran     TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (zahtjev_id, otpad_id)
+);

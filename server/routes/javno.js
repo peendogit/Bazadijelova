@@ -1,7 +1,9 @@
 // Javni API: katalog, pretraga dijelova, otpadi
 import { Router } from 'express';
 import { q } from '../db/index.js';
-import { asyncH, int, normOem } from '../lib/util.js';
+import { asyncH, int, normOem, KURS_EUR } from '../lib/util.js';
+import { POSTAVKE } from '../lib/paket.js';
+import { ukljucen as tgUkljucen } from '../lib/telegram.js';
 
 const r = Router();
 
@@ -60,7 +62,7 @@ r.get('/generacije/:id', asyncH(async (req, res) => {
 
 const POLJA_LISTE = `
   d.id, d.naziv, d.oem, d.stanje, d.km, d.godiste, d.motor, d.gorivo, d.cijena_km, d.kolicina, d.status,
-  d.slike[1] AS slika, m.naziv marka, mo.naziv model, g.naziv generacija, g.id generacija_id,
+  d.slike[1] AS slika, (d.izdvojen_do > NOW()) AS izdvojen, m.naziv marka, mo.naziv model, g.naziv generacija, g.id generacija_id,
   k.naziv kategorija, o.id otpad_id, o.naziv otpad, o.slug otpad_slug, o.grad, o.dostava_cijena_km`;
 
 const SPOJEVI = `
@@ -112,7 +114,7 @@ r.get('/dijelovi', asyncH(async (req, res) => {
   const gdje = uslovi.join(' AND ');
 
   const [{ rows }, { rows: [{ ukupno }] }] = await Promise.all([
-    q(`SELECT ${POLJA_LISTE} ${SPOJEVI} WHERE ${gdje} ORDER BY ${sort}, d.id DESC
+    q(`SELECT ${POLJA_LISTE} ${SPOJEVI} WHERE ${gdje} ORDER BY (d.izdvojen_do > NOW()) IS TRUE DESC, ${sort}, d.id DESC
        LIMIT ${poStrani} OFFSET ${(strana - 1) * poStrani}`, p),
     q(`SELECT COUNT(*)::int ukupno ${SPOJEVI} WHERE ${gdje}`, p),
   ]);
@@ -126,7 +128,7 @@ r.get('/dijelovi/:id', asyncH(async (req, res) => {
            json_build_object('id', o.id, 'naziv', o.naziv, 'slug', o.slug, 'grad', o.grad, 'adresa', o.adresa,
              'telefon', o.telefon, 'email', o.email, 'lat', o.lat, 'lng', o.lng, 'opis', o.opis,
              'dostava_info', o.dostava_info, 'dostava_cijena_km', o.dostava_cijena_km,
-             'licno_preuzimanje', o.licno_preuzimanje) otpad_info
+             'licno_preuzimanje', o.licno_preuzimanje, 'ocjene', (SELECT json_build_object('prosjek', ROUND(AVG(oc.ocjena)::numeric, 1), 'broj', COUNT(*)) FROM ocjene oc WHERE oc.otpad_id = o.id)) otpad_info
     ${SPOJEVI} WHERE d.id = $1`, [int(req.params.id)]);
   if (!dio) return res.status(404).json({ greska: 'Dio nije pronađen.' });
   delete dio.vanjska_sifra;
@@ -145,7 +147,7 @@ r.get('/dijelovi/:id', asyncH(async (req, res) => {
 
 r.get('/otpadi', asyncH(async (_req, res) => {
   const { rows } = await q(`
-    SELECT o.id, o.naziv, o.slug, o.grad, o.lat, o.lng, o.dostava_cijena_km,
+    SELECT o.id, o.naziv, o.slug, o.grad, o.lat, o.lng, o.dostava_cijena_km, (SELECT json_build_object('prosjek', ROUND(AVG(oc.ocjena)::numeric, 1), 'broj', COUNT(*)) FROM ocjene oc WHERE oc.otpad_id = o.id) ocjene,
       (SELECT COUNT(*)::int FROM dijelovi d WHERE d.otpad_id = o.id AND ${AKTIVAN}) broj
     FROM otpadi o WHERE o.odobren ORDER BY o.naziv`);
   res.json(rows);
@@ -154,11 +156,13 @@ r.get('/otpadi', asyncH(async (_req, res) => {
 r.get('/otpadi/:slug', asyncH(async (req, res) => {
   const { rows: [o] } = await q(`
     SELECT o.id, o.naziv, o.slug, o.grad, o.adresa, o.telefon, o.email, o.lat, o.lng, o.opis,
-           o.dostava_info, o.dostava_cijena_km, o.licno_preuzimanje,
+           o.dostava_info, o.dostava_cijena_km, o.licno_preuzimanje, (SELECT json_build_object('prosjek', ROUND(AVG(oc.ocjena)::numeric, 1), 'broj', COUNT(*)) FROM ocjene oc WHERE oc.otpad_id = o.id) ocjene,
       (SELECT COUNT(*)::int FROM dijelovi d WHERE d.otpad_id = o.id AND ${AKTIVAN}) broj
     FROM otpadi o WHERE o.slug = $1 AND o.odobren`, [req.params.slug]);
   if (!o) return res.status(404).json({ greska: 'Otpad nije pronađen.' });
-  res.json(o);
+  const { rows: recenzije } = await q(
+    `SELECT ocjena, komentar, ime, kreiran FROM ocjene WHERE otpad_id = $1 ORDER BY kreiran DESC LIMIT 20`, [o.id]);
+  res.json({ ...o, recenzije });
 }));
 
 r.get('/statistika', asyncH(async (_req, res) => {
@@ -167,5 +171,15 @@ r.get('/statistika', asyncH(async (_req, res) => {
            (SELECT COUNT(*)::int FROM otpadi WHERE odobren) otpada`);
   res.json(s);
 }));
+
+// Postavke za frontend: kursevi i paketi
+r.get('/postavke', (_req, res) => {
+  res.json({
+    kurs_eur: KURS_EUR,
+    kurs_rsd_eur: parseFloat(process.env.KURS_RSD_EUR || '117.2'),
+    paketi: POSTAVKE(),
+    telegram: tgUkljucen(),
+  });
+});
 
 export default r;

@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { q, transakcija } from '../db/index.js';
 import { asyncH, slugify } from '../lib/util.js';
 import { potpisi, prijavljen } from '../lib/auth.js';
+import { obavijestiAdmina } from '../lib/telegram.js';
 
 const r = Router();
 
@@ -42,6 +43,8 @@ r.post('/registracija', asyncH(async (req, res) => {
     );
     return k;
   });
+  if (korisnik.uloga === 'otpad')
+    obavijestiAdmina(`🏭 Novi otpad čeka odobrenje: <b>${String(otpad.naziv).replace(/[<>&]/g, '')}</b>, ${String(otpad.grad).replace(/[<>&]/g, '')}\n📞 ${telefon || '-'}`);
   res.json({ token: potpisi(korisnik), korisnik: javniKorisnik(korisnik) });
 }));
 

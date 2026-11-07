@@ -7,7 +7,7 @@ import * as I from '../components/Ikone.jsx';
 
 export function ListaDijelova({ fiksno = {} }) {
   const [sp, setSp] = useSearchParams();
-  const { valuta } = useApp();
+  const { valuta, faktor } = useApp();
   const [kategorije, setKategorije] = useState([]);
   const [podaci, setPodaci] = useState(null);
   const [kontekst, setKontekst] = useState(null);
@@ -44,8 +44,7 @@ export function ListaDijelova({ fiksno = {} }) {
     postavi({ stanje: nova.join(',') });
   };
   // Cijene u filteru unose se u izabranoj valuti, a šalju u KM
-  const faktor = valuta === 'EUR' ? 1.95583 : 1;
-  const prikazCijene = (v) => (v ? String(Math.round(Number(v) / faktor)) : '');
+  const prikazCijene = (v) => (v ? String(Math.round(Number(v) * faktor)) : '');
 
   return (
     <div className="raspored-liste">
@@ -76,9 +75,9 @@ export function ListaDijelova({ fiksno = {} }) {
             <label className="oznaka">Cijena ({valuta})</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input className="unos" inputMode="numeric" placeholder="od" defaultValue={prikazCijene(filteri.min)} key={`min${valuta}${filteri.min}`}
-                onBlur={(e) => postavi({ min: e.target.value ? Math.round(Number(e.target.value) * faktor) : '' })} />
+                onBlur={(e) => postavi({ min: e.target.value ? Math.round(Number(e.target.value) / faktor) : '' })} />
               <input className="unos" inputMode="numeric" placeholder="do" defaultValue={prikazCijene(filteri.max)} key={`max${valuta}${filteri.max}`}
-                onBlur={(e) => postavi({ max: e.target.value ? Math.round(Number(e.target.value) * faktor) : '' })} />
+                onBlur={(e) => postavi({ max: e.target.value ? Math.round(Number(e.target.value) / faktor) : '' })} />
             </div>
           </div>
         </div>
@@ -104,6 +103,7 @@ export function ListaDijelova({ fiksno = {} }) {
           <div className="kartica"><Prazno>
             <p>Nema dijelova za ovu pretragu.</p>
             <p className="malo">Pokušajte bez nekog filtera ili pretražite po OEM broju.</p>
+            <Link to={`/trazim${filteri.q ? `?dio=${encodeURIComponent(filteri.q)}` : ''}`} className="dugme" style={{ marginTop: 6 }}>Objavi da tražiš ovaj dio</Link>
           </Prazno></div>
         ) : (
           <>

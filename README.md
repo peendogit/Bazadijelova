@@ -7,12 +7,29 @@ Tržište polovnih auto dijelova iz više otpada (BiH i region). Raspored po uzo
 ## Funkcije
 
 - **Marka → model → generacija → grupa dijelova**, plavo „ima na stanju”, crveno „nema”.
-- **Pretraga po OEM broju** (radi s razmacima i bez njih) i nazivu, filteri po stanju, cijeni i grupi. Na stranici dijela prikazuje se isti OEM kod drugih otpada.
-- **Ocjena stanja** (Novo / Odlično / Dobro / Oštećeno) i kilometraža vozila donora.
-- **Otpad uz svaki dio:** grad, adresa, telefon, mapa, cijena dostave, lično preuzimanje.
-- **Upit otpadu** i **narudžba iz korpe**. Korpa se dijeli po otpadu, naručeni dio se odmah rezerviše, a otpad potvrđuje, šalje ili otkazuje.
-- **Uvoz zaliha:** CSV iz Excela u panelu otpada, ili automatski preko API-ja (`POST /api/uvoz` sa `X-Api-Key`).
-- Cijene u **KM / EUR** (kurs 1,95583), uloge **kupac / otpad / admin**, admin odobrava nove otpade.
+- **Pretraga po OEM broju** (s razmacima i bez njih) i nazivu, filteri po stanju, cijeni i grupi. Na dijelu piše „isti OEM kod drugih otpada”.
+- **Ocjena stanja** (Novo / Odlično / Dobro / Oštećeno), kilometraža vozila, dio bez cijene = „cijena na upit”.
+- **Otpad uz svaki dio:** grad, adresa, telefon, mapa, cijena dostave, lično preuzimanje, **ocjene kupaca**.
+- **Upit otpadu** i **narudžba iz korpe** (dijeli se po otpadu, dio se odmah rezerviše).
+- **Tražim dio:** kupac objavi šta traži, otpadi šalju ponude, kupac ih vidi na svom linku.
+- **Telegram obavještenja** otpadima za narudžbe, upite i zahtjeve; adminu za nove otpade.
+- **Uvoz zaliha:** CSV iz Excela, API (`POST /api/uvoz`), ili **automatsko povezivanje s Delić programom** (`/shop-api`, svakih 15 min).
+- **Paketi:** besplatno do 100 dijelova, Pro bez ograničenja + izdvojeni oglasi na vrhu pretrage. Admin uključuje Pro ručno.
+- **Srbija:** na bazadelova.com sav tekst ide u ekavicu, cijene u dinarima (kurs `KURS_RSD_EUR`).
+- **SEO:** svaka stranica ima svoj naslov, opis i Google podatke o proizvodu; `sitemap.xml` i `robots.txt` za oba domena.
+
+## Telegram bot
+
+1. U Telegramu otvori **@BotFather**, pošalji `/newbot`, daj ime (npr. „Baza dijelova”) i korisničko ime (npr. `bazadijelova_bot`).
+2. Token i korisničko ime upiši u `server/.env`: `TELEGRAM_BOT_TOKEN=...` i `TELEGRAM_BOT_IME=bazadijelova_bot`.
+3. `pm2 restart bazadijelova`, pa botu pošalji `/id` i dobijeni broj upiši u `TELEGRAM_ADMIN_CHAT_ID`.
+4. Otpadi se povezuju sami: Panel → Profil i dostava → „Poveži Telegram”.
+
+Napravi **novi** bot, ne koristi onaj od webshopa: jedan bot može slušati samo jedan program.
+
+## Povezivanje Delić programa
+
+Panel otpada → Uvoz zaliha → „Poveži svoj program”. Adresa: ako je program na istom serveru, `http://localhost:3020`. Ključ: `SHOP_API_KEY` iz `.env` Delić programa.
 
 ## Instalacija na serveru (Termius)
 

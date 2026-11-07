@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, km, STANJA } from '../api.js';
 import { useApp } from '../store.jsx';
-import { DioKartica, Mrvice, Modal, Stanje, UpitForma, Ucitavanje } from '../components/Zajednicko.jsx';
+import { DioKartica, Mrvice, Modal, Stanje, UpitForma, Ucitavanje, Zvjezdice } from '../components/Zajednicko.jsx';
 import * as I from '../components/Ikone.jsx';
 
 function mapaUrl(lat, lng) {
@@ -12,7 +12,7 @@ function mapaUrl(lat, lng) {
 
 export default function Dio() {
   const { id } = useParams();
-  const { cijena, uKorpi, dodajUKorpu, jeSacuvan, prebaciSacuvano } = useApp();
+  const { cijena, cijenaDijela, uKorpi, dodajUKorpu, jeSacuvan, prebaciSacuvano } = useApp();
   const [d, setD] = useState(null);
   const [greska, setGreska] = useState('');
   const [slika, setSlika] = useState(0);
@@ -60,12 +60,16 @@ export default function Dio() {
             <Stanje s={d.stanje} />
             <h1 style={{ marginTop: 8, marginBottom: 2 }}>{d.naziv}</h1>
             <div className="tiho">{vozilo}{d.godiste ? ` · ${d.godiste}` : ''}</div>
-            <div className="velika-cijena" style={{ marginTop: 12 }}>{cijena(d.cijena_km)}</div>
+            <div className={`velika-cijena ${d.cijena_km > 0 ? '' : 'na-upit'}`} style={{ marginTop: 12 }}>{cijenaDijela(d.cijena_km)}</div>
             {!dostupan && <div className="greska">{d.status === 'rezervisan' ? 'Dio je rezervisan.' : 'Dio je prodan.'}</div>}
             <div className="akcije">
-              <button className="dugme" disabled={!dostupan || uKorpi(d.id)} onClick={() => dodajUKorpu(d)}>
-                <I.Korpa />{uKorpi(d.id) ? 'U korpi' : 'Dodaj u korpu'}
-              </button>
+              {d.cijena_km > 0 ? (
+                <button className="dugme" disabled={!dostupan || uKorpi(d.id)} onClick={() => dodajUKorpu(d)}>
+                  <I.Korpa />{uKorpi(d.id) ? 'U korpi' : 'Dodaj u korpu'}
+                </button>
+              ) : (
+                <button className="dugme" disabled={!dostupan} onClick={() => setUpit(true)}><I.Poruka />Pitaj za cijenu</button>
+              )}
               <button className="dugme sekundarno" onClick={() => setUpit(true)}><I.Poruka />Pitaj otpad</button>
               <button className="dugme obrub ikona-samo" onClick={() => prebaciSacuvano(d)} aria-label="Sačuvaj">
                 {jeSacuvan(d.id) ? <I.ZastavicaPuna style={{ color: 'var(--narandzasta)' }} /> : <I.Zastavica />}
@@ -91,6 +95,7 @@ export default function Dio() {
               <div className="otpad-ikona"><I.Lokacija /></div>
               <div style={{ flex: 1 }}>
                 <Link to={`/otpad/${o.slug}`}><h3 style={{ margin: 0 }}>{o.naziv}</h3></Link>
+                <Zvjezdice ocjene={o.ocjene} malo />
                 <div className="red-info"><I.Lokacija />{[o.adresa, o.grad].filter(Boolean).join(', ')}</div>
                 {o.telefon && <div className="red-info"><I.Telefon /><a href={`tel:${o.telefon}`}>{o.telefon}</a></div>}
                 <div className="red-info"><I.Kamion />

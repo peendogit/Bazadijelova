@@ -334,3 +334,22 @@ code { background: var(--polje); padding: 1px 6px; border-radius: 5px; font-size
 
 .podnozje { text-align: center; color: var(--siva); font-size: .85rem; padding: 26px 16px 40px; }
 .podnozje a { color: var(--siva); margin: 0 8px; }
+
+/* ---------- v2.1 ---------- */
+.cijena.na-upit, .velika-cijena.na-upit { color: var(--siva); font-weight: 600; font-size: 1rem; }
+.velika-cijena.na-upit { font-size: 1.3rem; }
+.oznaka-stanja.izdvojeno { background: #fff4e0; color: #9a5b00; }
+.zvjezdice { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; color: var(--siva); }
+.zvjezdice .zv { color: var(--narandzasta); letter-spacing: 1px; }
+.zvjezdice .prazne { color: #d8dce3; }
+.zvjezdice.malo { font-size: .8rem; }
+.birac-zvjezdica { display: flex; gap: 6px; margin: 16px 0 4px; }
+.birac-zvjezdica button { border: 0; background: none; font-size: 2.4rem; line-height: 1; color: #d8dce3; cursor: pointer; padding: 0 2px; }
+.birac-zvjezdica button.puna { color: var(--narandzasta); }
+.mreza-paketa { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.paket ul { padding-left: 20px; margin: 12px 0; }
+.paket li { margin: 6px 0; }
+.paket-cijena { font-size: 1.6rem; font-weight: 700; color: var(--plava); }
+.paket.istaknut { border: 2px solid var(--narandzasta); }
+.koraci { padding-left: 22px; margin: 0; }
+.koraci li { margin: 8px 0; }

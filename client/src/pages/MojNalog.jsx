@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useApp } from '../store.jsx';
 import { Mrvice, Ucitavanje } from '../components/Zajednicko.jsx';
@@ -9,9 +10,11 @@ export default function MojNalog() {
   const { cijena, korisnik } = useApp();
   const [narudzbe, setNarudzbe] = useState(null);
   const [upiti, setUpiti] = useState([]);
+  const [zahtjevi, setZahtjevi] = useState([]);
   useEffect(() => {
     api('/moje-narudzbe').then(setNarudzbe).catch(() => setNarudzbe([]));
     api('/moji-upiti').then(setUpiti).catch(() => {});
+    api('/moji-zahtjevi').then(setZahtjevi).catch(() => {});
   }, []);
   if (!narudzbe) return <Ucitavanje />;
   return (
@@ -30,7 +33,20 @@ export default function MojNalog() {
               </div>
               {(n.stavke || []).map((s) => <div key={s.id} className="malo">{s.naziv} · {cijena(s.cijena_km)}</div>)}
               <div className="tiho malo">{new Date(n.kreiran).toLocaleDateString('bs-BA')} · ukupno {cijena(n.ukupno_km + n.dostava_km)}{n.otpad_telefon ? ` · otpad: ${n.otpad_telefon}` : ''}</div>
+              {['poslana', 'zavrsena'].includes(n.status) && n.token && (
+                <Link to={`/ocjena/${n.token}`} className="malo">{n.ocjena ? `Vaša ocjena: ${'★'.repeat(n.ocjena)} (izmijeni)` : '★ Ocijenite otpad'}</Link>
+              )}
             </div>
+          ))}
+        </div>
+        <h2 style={{ marginTop: 22 }}>Tražim dio</h2>
+        {!zahtjevi.length && <p className="tiho">Niste objavili nijedan zahtjev. <Link to="/trazim">Objavi šta tražiš</Link></p>}
+        <div className="lista-stavki">
+          {zahtjevi.map((z) => (
+            <Link key={z.token} to={`/zahtjev/${z.token}`} className="traka" style={{ marginBottom: 0, color: 'inherit' }}>
+              <b>{z.naziv}</b>
+              <span className="tiho malo">{z.broj_ponuda} ponuda · {z.status === 'otvoren' ? 'otvoren' : 'zatvoren'}</span>
+            </Link>
           ))}
         </div>
         <h2 style={{ marginTop: 22 }}>Upiti</h2>

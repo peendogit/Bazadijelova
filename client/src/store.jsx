@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { api, KURS_EUR } from './api.js';
+import { api, KURS_EUR, SRBIJA } from './api.js';
 
 const Ctx = createContext(null);
 
@@ -13,7 +13,12 @@ function pisi(kljuc, v) {
 export function Provider({ children }) {
   const [korisnik, setKorisnik] = useState(null);
   const [ucitan, setUcitan] = useState(false);
-  const [valuta, setValuta] = useState(() => citaj('bd_valuta', 'KM'));
+  // BiH: KM / EUR; Srbija (bazadelova.com): RSD / EUR
+  const VALUTE = SRBIJA ? ['RSD', 'EUR'] : ['KM', 'EUR'];
+  const [valuta, setValutaS] = useState(() => { const v = citaj('bd_valuta', VALUTE[0]); return VALUTE.includes(v) ? v : VALUTE[0]; });
+  const setValuta = (v) => setValutaS(VALUTE.includes(v) ? v : VALUTE[0]);
+  const sljedecaValuta = () => setValutaS((v) => VALUTE[(VALUTE.indexOf(v) + 1) % VALUTE.length]);
+  const [postavke, setPostavke] = useState({ kurs_rsd_eur: 117.2, paketi: null, telegram: false });
   const [korpa, setKorpa] = useState(() => citaj('bd_korpa', []));       // [{id, naziv, cijena_km, otpad_id, otpad, slika}]
   const [sacuvano, setSacuvano] = useState(() => citaj('bd_sacuvano', [])); // isti oblik
   const [poruka, setPoruka] = useState(null);
@@ -21,6 +26,8 @@ export function Provider({ children }) {
   useEffect(() => pisi('bd_valuta', valuta), [valuta]);
   useEffect(() => pisi('bd_korpa', korpa), [korpa]);
   useEffect(() => pisi('bd_sacuvano', sacuvano), [sacuvano]);
+
+  useEffect(() => { api('/postavke').then(setPostavke).catch(() => {}); }, []);
 
   useEffect(() => {
     let t = null;
@@ -64,16 +71,21 @@ export function Provider({ children }) {
     else { setSacuvano((s) => [snimak(d), ...s]); obavijest('Sačuvano'); }
   };
 
+  // Koliko jedinica izabrane valute vrijedi 1 KM
+  const faktor = valuta === 'EUR' ? 1 / KURS_EUR : valuta === 'RSD' ? postavke.kurs_rsd_eur / KURS_EUR : 1;
   const cijena = (iznosKm) => {
     if (iznosKm === null || iznosKm === undefined) return '';
-    const n = valuta === 'EUR' ? iznosKm / KURS_EUR : iznosKm;
-    return `${n.toLocaleString('bs-BA', { minimumFractionDigits: 0, maximumFractionDigits: valuta === 'EUR' ? 2 : 0 })} ${valuta === 'EUR' ? '€' : 'KM'}`;
+    const n = iznosKm * faktor;
+    const znak = { EUR: '€', RSD: 'din', KM: 'KM' }[valuta];
+    return `${n.toLocaleString(SRBIJA ? 'sr-Latn-RS' : 'bs-BA', { minimumFractionDigits: 0, maximumFractionDigits: valuta === 'EUR' ? 2 : 0 })} ${znak}`;
   };
+  // Cijena dijela: 0 znači "na upit"
+  const cijenaDijela = (iznosKm) => (iznosKm > 0 ? cijena(iznosKm) : 'Cijena na upit');
 
   return (
     <Ctx.Provider value={{
       korisnik, ucitan, prijava, odjava,
-      valuta, setValuta, cijena,
+      valuta, setValuta, sljedecaValuta, cijena, cijenaDijela, faktor, postavke,
       korpa, setKorpa, uKorpi, dodajUKorpu, izbaciIzKorpe,
       sacuvano, jeSacuvan, prebaciSacuvano,
       poruka, obavijest,

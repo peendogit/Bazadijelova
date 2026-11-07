@@ -15,6 +15,10 @@ import { Prijava, Registracija } from './pages/Prijava.jsx';
 import MojNalog from './pages/MojNalog.jsx';
 import Panel from './pages/Panel.jsx';
 import Admin from './pages/Admin.jsx';
+import { Trazim, Zahtjev } from './pages/Trazim.jsx';
+import Ocjena from './pages/Ocjena.jsx';
+import ZaOtpade from './pages/ZaOtpade.jsx';
+import { SRBIJA } from './api.js';
 
 function Zasticeno({ uloge, children }) {
   const { korisnik, ucitan } = useApp();
@@ -45,6 +49,10 @@ export default function App() {
           <Route path="/otpad/:slug" element={<Otpad />} />
           <Route path="/korpa" element={<Korpa />} />
           <Route path="/sacuvano" element={<Sacuvano />} />
+          <Route path="/trazim" element={<Trazim />} />
+          <Route path="/zahtjev/:token" element={<Zahtjev />} />
+          <Route path="/ocjena/:token" element={<Ocjena />} />
+          <Route path="/za-otpade" element={<ZaOtpade />} />
           <Route path="/prijava" element={<Prijava />} />
           <Route path="/registracija" element={<Registracija />} />
           <Route path="/moj-nalog" element={<Zasticeno><MojNalog /></Zasticeno>} />
@@ -54,8 +62,10 @@ export default function App() {
         </Routes>
       </main>
       <footer className="podnozje">
-        <div><Link to="/otpadi">Otpadi</Link><Link to="/registracija?tip=otpad">Prodajete dijelove? Registrujte otpad</Link></div>
-        <div style={{ marginTop: 6 }}>© {new Date().getFullYear()} bazadijelova.com · cijene u KM, preračun u EUR po kursu 1,95583</div>
+        <div><Link to="/otpadi">Otpadi</Link><Link to="/trazim">Tražim dio</Link><Link to="/za-otpade">Prodajete dijelove?</Link></div>
+        <div style={{ marginTop: 6 }}>
+          © {new Date().getFullYear()} {SRBIJA ? <>bazadelova.com · <a href="https://bazadijelova.com">BiH</a></> : <>bazadijelova.com · <a href="https://bazadelova.com">Srbija</a></>}
+        </div>
       </footer>
       {poruka && <div className="obavijest">{poruka}</div>}
     </>

@@ -11,7 +11,10 @@ import kupac from './routes/kupac.js';
 import otpad, { UPLOADS } from './routes/otpad.js';
 import admin from './routes/admin.js';
 import apiUvoz from './routes/api-uvoz.js';
-import { KURS_EUR } from './lib/util.js';
+import { KURS_EUR, asyncH } from './lib/util.js';
+import { ubaciMeta, sitemap, robots } from './lib/seo.js';
+import { pokreniPolling } from './lib/telegram.js';
+import { pokreniSinhronizaciju } from './lib/izvor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3004;
@@ -32,11 +35,20 @@ app.use('/api', (_req, res) => res.status(404).json({ greska: 'Nepoznata ruta.' 
 
 app.use('/uploads', express.static(UPLOADS, { maxAge: '30d' }));
 
-// Gotov frontend (client/dist)
+app.get('/robots.txt', (req, res) => res.type('text/plain').send(robots(req)));
+app.get('/sitemap.xml', asyncH(async (req, res) => res.type('application/xml').send(await sitemap(req))));
+
+// Gotov frontend (client/dist); svaka stranica dobije svoj naslov i opis za Google
 const DIST = path.join(__dirname, '..', 'client', 'dist');
 if (fs.existsSync(DIST)) {
+  const sablon = () => fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
+  let html = sablon();
   app.use(express.static(DIST, { maxAge: '1h', index: false }));
-  app.get('*', (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
+  app.get('*', asyncH(async (req, res) => {
+    if (process.env.NODE_ENV !== 'production') html = sablon();
+    const r = await ubaciMeta(html, req);
+    res.status(r.status).type('html').set('Cache-Control', 'no-cache').send(r.html);
+  }));
 }
 
 // Greške
@@ -51,3 +63,5 @@ app.use((err, _req, res, _next) => {
 
 await primijeniSemu();
 app.listen(PORT, () => console.log(`bazadijelova radi na portu ${PORT}`));
+pokreniPolling();
+pokreniSinhronizaciju();

@@ -39,10 +39,11 @@ export default function Korpa() {
     <div className="kartica kartica-tijelo">
       <h1>Narudžba je poslana</h1>
       <div className="uspjeh">Otpadi su dobili vašu narudžbu i javiće vam se na telefon {f.telefon} radi potvrde.</div>
+      <div className="info">Kad dobijete dijelove, ocijenite otpad preko linka ispod svake narudžbe. Sačuvajte ovu stranicu ili linkove.</div>
       <div className="lista-stavki">
         {gotovo.map((n) => (
           <div key={n.id} className="traka" style={{ marginBottom: 0 }}>
-            <span><b>{n.otpad}</b><br /><span className="tiho malo">Narudžba #{n.id}</span></span>
+            <span><b>{n.otpad}</b><br /><span className="tiho malo">Narudžba #{n.id} · <Link to={`/ocjena/${n.token}`}>link za ocjenu</Link></span></span>
             <b>{cijena(n.ukupno_km + n.dostava_km)}</b>
           </div>
         ))}

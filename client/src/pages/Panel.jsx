@@ -27,12 +27,14 @@ export default function Panel() {
         <NavLink to="/panel/dijelovi">Dijelovi</NavLink>
         <NavLink to="/panel/narudzbe">Narudžbe{s.novih_narudzbi ? ` (${s.novih_narudzbi})` : ''}</NavLink>
         <NavLink to="/panel/upiti">Upiti{s.novih_upita ? ` (${s.novih_upita})` : ''}</NavLink>
+        <NavLink to="/panel/zahtjevi">Tražim dio</NavLink>
         <NavLink to="/panel/uvoz">Uvoz zaliha</NavLink>
         <NavLink to="/panel/profil">Profil i dostava</NavLink>
       </nav>
       <Routes>
-        <Route index element={<Pregled s={s} />} />
-        <Route path="dijelovi" element={<PanelDijelovi onPromjena={osvjezi} />} />
+        <Route index element={<Pregled s={s} profil={profil} />} />
+        <Route path="dijelovi" element={<PanelDijelovi onPromjena={osvjezi} pro={profil.paket.pro} />} />
+        <Route path="zahtjevi" element={<PanelZahtjevi />} />
         <Route path="narudzbe" element={<PanelNarudzbe onPromjena={osvjezi} />} />
         <Route path="upiti" element={<PanelUpiti onPromjena={osvjezi} />} />
         <Route path="uvoz" element={<PanelUvoz profil={profil} onPromjena={osvjezi} />} />
@@ -42,9 +44,21 @@ export default function Panel() {
   );
 }
 
-function Pregled({ s }) {
+function Pregled({ s, profil }) {
+  const p = profil.paket;
   return (
+    <>
+    {!profil.telegram.povezan && profil.telegram.ukljucen && (
+      <div className="info">Povežite Telegram da vam narudžbe i upiti stižu odmah na telefon. <Link to="/panel/profil">Poveži →</Link></div>
+    )}
     <div className="kartica kartica-tijelo">
+      <div className="traka">
+        <span>Paket: <b>{p.pro ? 'Pro' : 'Besplatno'}</b>{p.pro && p.paket_do ? ` do ${new Date(p.paket_do).toLocaleDateString('bs-BA')}` : ''}
+          {!p.pro && <span className="tiho"> · {p.aktivnih} / {p.limit} dijelova</span>}
+          {p.pro && <span className="tiho"> · izdvojeno {p.izdvojenih} / {p.izdvojeni_limit}</span>}
+        </span>
+        {!p.pro && <Link to="/za-otpade" className="dugme sekundarno malo">Pređi na Pro</Link>}
+      </div>
       <div className="brojke">
         <div className="brojka"><b>{s.aktivnih}</b><span>dijelova u prodaji</span></div>
         <div className="brojka"><b>{s.rezervisanih}</b><span>rezervisano</span></div>
@@ -55,8 +69,10 @@ function Pregled({ s }) {
       <div className="akcije">
         <Link to="/panel/dijelovi?novi=1" className="dugme"><I.Dio />Dodaj dio</Link>
         <Link to="/panel/uvoz" className="dugme sekundarno"><I.Upload />Uvezi zalihe</Link>
+        <Link to="/panel/zahtjevi" className="dugme obrub"><I.Poruka />Kupci traže</Link>
       </div>
     </div>
+    </>
   );
 }
 
@@ -156,7 +172,7 @@ function FormaDijela({ dio, onZatvori, onSnimljeno }) {
           </div>
         </div>
         <div className="red-polja">
-          <div><label className="oznaka">Cijena (KM)</label><input className="unos" inputMode="decimal" value={f.cijena_km} onChange={p('cijena_km')} required /></div>
+          <div><label className="oznaka">Cijena (KM, prazno = na upit)</label><input className="unos" inputMode="decimal" value={f.cijena_km} onChange={p('cijena_km')} /></div>
           <div><label className="oznaka">Količina</label><input className="unos" inputMode="numeric" value={f.kolicina} onChange={p('kolicina')} /></div>
           {dio?.id && (
             <div><label className="oznaka">Status</label>
@@ -188,8 +204,8 @@ function FormaDijela({ dio, onZatvori, onSnimljeno }) {
   );
 }
 
-function PanelDijelovi({ onPromjena }) {
-  const { cijena } = useApp();
+function PanelDijelovi({ onPromjena, pro }) {
+  const { cijena, obavijest } = useApp();
   const [podaci, setPodaci] = useState(null);
   const [status, setStatus] = useState('aktivan');
   const [q, setQ] = useState('');
@@ -201,6 +217,13 @@ function PanelDijelovi({ onPromjena }) {
     api(`/moj-otpad/dijelovi${qs({ status, q: trazi, strana })}`).then(setPodaci).catch(() => {});
   }, [status, trazi, strana]);
   useEffect(() => { ucitaj(); }, [ucitaj]);
+
+  async function izdvoji(d) {
+    try {
+      await api(`/moj-otpad/dijelovi/${d.id}/izdvoji`, { metoda: 'POST', tijelo: { ukloni: !!(d.izdvojen_do && new Date(d.izdvojen_do) > new Date()) } });
+      ucitaj(); onPromjena();
+    } catch (e) { obavijest(e.message); }
+  }
 
   async function obrisi(d) {
     if (!confirm(`Obrisati "${d.naziv}"?`)) return;
@@ -228,12 +251,13 @@ function PanelDijelovi({ onPromjena }) {
               <tbody>
                 {podaci.dijelovi.map((d) => (
                   <tr key={d.id}>
-                    <td><b>{d.naziv}</b><div className="tiho malo">{d.oem}{d.vanjska_sifra ? ` · šifra ${d.vanjska_sifra}` : ''}</div></td>
+                    <td><b>{d.naziv}</b>{d.izdvojen_do && new Date(d.izdvojen_do) > new Date() && <span className="oznaka-stanja izdvojeno" style={{ marginLeft: 6 }}>★</span>}<div className="tiho malo">{d.oem}{d.vanjska_sifra ? ` · šifra ${d.vanjska_sifra}` : ''}</div></td>
                     <td className="malo">{[d.marka, d.generacija].filter(Boolean).join(' ') || <span className="tiho">nije povezano</span>}</td>
                     <td>{STANJA[d.stanje]?.naziv}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{cijena(d.cijena_km)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{d.cijena_km > 0 ? cijena(d.cijena_km) : <span className="tiho">na upit</span>}</td>
                     <td><span className={`status status-${d.status}`}>{d.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
+                      {pro && d.status === 'aktivan' && <><button className="dugme obrub malo" onClick={() => izdvoji(d)} title="Izdvoji na vrh pretrage">{d.izdvojen_do && new Date(d.izdvojen_do) > new Date() ? '☆' : '★'}</button>{' '}</>}
                       <button className="dugme obrub malo" onClick={() => setUredi(d)}>Uredi</button>{' '}
                       <button className="dugme opasno malo" onClick={() => obrisi(d)}>Obriši</button>
                     </td>
@@ -388,12 +412,13 @@ function PanelUvoz({ profil, onPromjena }) {
 
   return (
     <>
-      <div className="kartica kartica-tijelo">
+      <PoveziProgram izvor={profil.izvor} onPromjena={() => { ucitajUvoze(); onPromjena(); }} />
+      <div className="kartica kartica-tijelo" style={{ marginTop: 12 }}>
         <h2>Uvoz iz CSV / Excel fajla</h2>
         <p className="tiho malo" style={{ marginTop: 0 }}>
           Iz Excela snimite kao „CSV UTF-8”. Dijelovi se uparuju po koloni <code>sifra</code>: postojeći se ažuriraju, novi dodaju.
           Kolone: <code>sifra, naziv, oem, marka, model, godiste, kategorija, stanje (A/B/C/N), km, cijena, kolicina, slike, opis, motor, gorivo</code>.
-          Obavezni su samo <code>naziv</code> i <code>cijena</code>.
+          Obavezan je samo <code>naziv</code>; bez cijene dio ide kao „cijena na upit”.
         </p>
         <button className="dugme obrub malo" onClick={primjer}>Preuzmi primjer fajla</button>
         <form onSubmit={uvezi} style={{ marginTop: 14 }}>
@@ -407,7 +432,7 @@ function PanelUvoz({ profil, onPromjena }) {
         {greska && <div className="greska">{greska}</div>}
         {rez && (
           <div className="uspjeh">
-            Novih: <b>{rez.novih}</b> · ažuriranih: <b>{rez.azuriranih}</b> · označeno prodanih: <b>{rez.prodanih}</b>{rez.gresaka ? ` · grešaka: ${rez.gresaka}` : ''}
+            Novih: <b>{rez.novih}</b> · ažuriranih: <b>{rez.azuriranih}</b> · označeno prodanih: <b>{rez.prodanih}</b>{rez.gresaka ? ` · grešaka: ${rez.gresaka}` : ''}{rez.preko_limita ? ` · preko limita: ${rez.preko_limita}` : ''}
             {rez.greske?.length > 0 && <ul className="malo" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{rez.greske.map((g) => <li key={g}>{g}</li>)}</ul>}
           </div>
         )}
@@ -456,7 +481,163 @@ Content-Type: application/json
   );
 }
 
+function PoveziProgram({ izvor, onPromjena }) {
+  const [url, setUrl] = useState(izvor.url || '');
+  const [kljuc, setKljuc] = useState('');
+  const [radi, setRadi] = useState(false);
+  const [poruka, setPoruka] = useState(null);
+  const [stanje, setStanje] = useState(izvor);
+
+  async function sacuvaj(e) {
+    e.preventDefault(); setRadi(true); setPoruka(null);
+    try {
+      const r = await api('/moj-otpad/izvor', { metoda: 'PUT', tijelo: { url, kljuc } });
+      setStanje({ povezan: !!url, url, zadnje: new Date().toISOString() });
+      setPoruka({ ok: true, t: url ? `Povezano. Novih: ${r.novih}, ažuriranih: ${r.azuriranih}, prodanih: ${r.prodanih}${r.preko_limita ? `, preko limita: ${r.preko_limita}` : ''}.` : 'Veza uklonjena.' });
+      setKljuc(''); onPromjena();
+    } catch (err) { setPoruka({ ok: false, t: err.message }); } finally { setRadi(false); }
+  }
+  async function prekini() {
+    if (!confirm('Prekinuti vezu s programom? Već uvezeni dijelovi ostaju.')) return;
+    await api('/moj-otpad/izvor', { metoda: 'PUT', tijelo: { url: '' } });
+    setUrl(''); setStanje({ povezan: false }); setPoruka({ ok: true, t: 'Veza uklonjena.' });
+  }
+  async function sada() {
+    setRadi(true); setPoruka(null);
+    try {
+      const r = await api('/moj-otpad/izvor/sada', { metoda: 'POST' });
+      setPoruka({ ok: true, t: `Sinhronizovano. Novih: ${r.novih}, ažuriranih: ${r.azuriranih}, prodanih: ${r.prodanih}.` });
+      onPromjena();
+    } catch (err) { setPoruka({ ok: false, t: err.message }); } finally { setRadi(false); }
+  }
+
+  return (
+    <div className="kartica kartica-tijelo">
+      <h2>Poveži svoj program za dijelove</h2>
+      <p className="tiho malo" style={{ marginTop: 0 }}>
+        Ako koristite Delić program za dijelove (isti koji puni webshop), unesite njegovu adresu i <code>SHOP_API_KEY</code> iz njegovog <code>.env</code>.
+        Stanje se povlači svakih 15 minuta: novi dio se pojavi, prodan nestane.
+      </p>
+      {stanje.povezan && (
+        <div className={stanje.greska ? 'greska' : 'uspjeh'}>
+          {stanje.greska ? `Zadnji pokušaj: ${stanje.greska}` : `Povezano${stanje.zadnje ? `, zadnja sinhronizacija ${new Date(stanje.zadnje).toLocaleString('bs-BA')}` : ''}.`}
+        </div>
+      )}
+      <form onSubmit={sacuvaj}>
+        <label className="oznaka">Adresa programa</label>
+        <input className="unos" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://delicdijelovi.duckdns.org" />
+        <label className="oznaka">API ključ {stanje.povezan && <span className="tiho">(prazno = ostaje stari)</span>}</label>
+        <input className="unos" value={kljuc} onChange={(e) => setKljuc(e.target.value)} autoComplete="off" />
+        <div className="akcije">
+          <button className="dugme" disabled={radi}>{radi ? 'Radim…' : stanje.povezan ? 'Sačuvaj' : 'Poveži'}</button>
+          {stanje.povezan && <button type="button" className="dugme sekundarno" disabled={radi} onClick={sada}>Sinhronizuj sad</button>}
+          {stanje.povezan && <button type="button" className="dugme opasno" disabled={radi} onClick={prekini}>Prekini vezu</button>}
+        </div>
+      </form>
+      {poruka && <div className={poruka.ok ? 'uspjeh' : 'greska'}>{poruka.t}</div>}
+    </div>
+  );
+}
+
+// ---------- Zahtjevi kupaca ----------
+
+function PanelZahtjevi() {
+  const { cijena, obavijest } = useApp();
+  const [lista, setLista] = useState(null);
+  const [forme, setForme] = useState({});
+  const ucitaj = () => api('/moj-otpad/zahtjevi').then(setLista).catch(() => setLista([]));
+  useEffect(() => { ucitaj(); }, []);
+  const f = (id) => forme[id] || {};
+  const set = (id, k, v) => setForme({ ...forme, [id]: { ...f(id), [k]: v } });
+
+  async function posalji(z) {
+    try {
+      await api(`/moj-otpad/zahtjevi/${z.id}/ponuda`, { metoda: 'POST', tijelo: f(z.id) });
+      obavijest('Ponuda poslana'); ucitaj();
+    } catch (e) { obavijest(e.message); }
+  }
+
+  if (!lista) return <Ucitavanje />;
+  return (
+    <div className="kartica kartica-tijelo">
+      <p className="tiho" style={{ marginTop: 0 }}>Kupci objavljuju dijelove koje ne mogu naći. Pošaljite ponudu, a kupac vas vidi s telefonom i može nazvati.</p>
+      {!lista.length && <p className="tiho">Trenutno nema otvorenih zahtjeva.</p>}
+      <div className="lista-stavki">
+        {lista.map((z) => (
+          <div key={z.id}>
+            <div className="traka" style={{ marginBottom: 2 }}>
+              <b>{z.naziv}</b>
+              <span className="tiho malo">{new Date(z.kreiran).toLocaleDateString('bs-BA')} · {z.broj_ponuda} ponuda</span>
+            </div>
+            <div className="malo">
+              {[z.marka, z.generacija].filter(Boolean).join(' ')}{z.godiste ? `, ${z.godiste}` : ''}{z.motor ? `, ${z.motor}` : ''}{z.oem ? ` · OEM ${z.oem}` : ''}{z.grad ? ` · ${z.grad}` : ''}
+            </div>
+            {z.opis && <div className="malo tiho">{z.opis}</div>}
+            {z.ponuda_id ? (
+              <div className="uspjeh">Poslali ste ponudu{z.ponuda_cijena ? `: ${cijena(z.ponuda_cijena)}` : ''}. {z.ponuda_poruka}</div>
+            ) : (
+              <div style={{ marginTop: 8 }}>
+                {z.moguci?.length > 0 && (
+                  <select className="unos" style={{ marginBottom: 6 }} value={f(z.id).dio_id || ''}
+                    onChange={(e) => { const d = z.moguci.find((x) => String(x.id) === e.target.value); setForme({ ...forme, [z.id]: { ...f(z.id), dio_id: e.target.value, cijena_km: d?.cijena_km || f(z.id).cijena_km } }); }}>
+                    <option value="">Imate odgovarajući dio u ponudi? Izaberite ga</option>
+                    {z.moguci.map((d) => <option key={d.id} value={d.id}>{d.naziv}{d.oem ? ` (${d.oem})` : ''} · {d.cijena_km} KM</option>)}
+                  </select>
+                )}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input className="unos" style={{ width: 120 }} inputMode="decimal" placeholder="Cijena KM" value={f(z.id).cijena_km || ''} onChange={(e) => set(z.id, 'cijena_km', e.target.value)} />
+                  <select className="unos" style={{ width: 'auto' }} value={f(z.id).stanje || ''} onChange={(e) => set(z.id, 'stanje', e.target.value)}>
+                    <option value="">Stanje</option>
+                    {Object.entries(STANJA).map(([k, v]) => <option key={k} value={k}>{v.naziv}</option>)}
+                  </select>
+                  <input className="unos" style={{ flex: 1, minWidth: 160 }} placeholder="Poruka kupcu" value={f(z.id).poruka || ''} onChange={(e) => set(z.id, 'poruka', e.target.value)} />
+                  <button className="dugme malo" style={{ height: 'auto' }} onClick={() => posalji(z)}>Pošalji ponudu</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Profil ----------
+
+function TelegramVeza({ telegram, onPromjena }) {
+  const { obavijest } = useApp();
+  const [link, setLink] = useState(null);
+  if (!telegram.ukljucen) return (
+    <div className="kartica kartica-tijelo" style={{ marginBottom: 12 }}>
+      <h2>Obavještenja na Telegram</h2>
+      <p className="tiho" style={{ margin: 0 }}>Administrator još nije podesio Telegram bota na serveru.</p>
+    </div>
+  );
+  async function povezi() {
+    try { const r = await api('/moj-otpad/telegram', { metoda: 'POST' }); setLink(r.link); window.open(r.link, '_blank'); }
+    catch (e) { obavijest(e.message); }
+  }
+  return (
+    <div className="kartica kartica-tijelo" style={{ marginBottom: 12 }}>
+      <h2>Obavještenja na Telegram</h2>
+      {telegram.povezan ? (
+        <>
+          <div className="uspjeh">Povezano. Narudžbe, upiti i zahtjevi kupaca stižu vam na Telegram.</div>
+          <div className="akcije">
+            <button className="dugme sekundarno" onClick={async () => { const r = await api('/moj-otpad/telegram/test', { metoda: 'POST' }); obavijest(r.ok ? 'Poslano, provjerite Telegram' : 'Slanje nije uspjelo'); }}>Pošalji test poruku</button>
+            <button className="dugme opasno" onClick={async () => { await api('/moj-otpad/telegram', { metoda: 'DELETE' }); onPromjena(); }}>Isključi</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="tiho" style={{ marginTop: 0 }}>Kliknite dugme, u Telegramu pritisnite <b>Start</b> i gotovo. Svaka nova narudžba i upit stižu vam odmah na telefon.</p>
+          <button className="dugme" onClick={povezi}>Poveži Telegram</button>
+          {link && <p className="malo">Ako se Telegram nije otvorio: <a href={link} target="_blank" rel="noreferrer">{link}</a>. Nakon klika na Start <button className="dugme obrub malo" onClick={onPromjena}>osvježi</button></p>}
+        </>
+      )}
+    </div>
+  );
+}
 
 function PanelProfil({ profil, onSnimljeno }) {
   const { obavijest } = useApp();
@@ -483,6 +664,8 @@ function PanelProfil({ profil, onSnimljeno }) {
   }
 
   return (
+    <>
+    <TelegramVeza telegram={profil.telegram} onPromjena={onSnimljeno} />
     <form className="kartica kartica-tijelo" onSubmit={snimi}>
       <label className="oznaka">Naziv otpada</label>
       <input className="unos" value={f.naziv} onChange={p('naziv')} required />
@@ -514,5 +697,6 @@ function PanelProfil({ profil, onSnimljeno }) {
       {greska && <div className="greska">{greska}</div>}
       <button className="dugme" style={{ marginTop: 14 }}>Snimi</button>
     </form>
+    </>
   );
 }

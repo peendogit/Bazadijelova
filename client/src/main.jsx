@@ -4,6 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { Provider } from './store.jsx';
 import App from './App.jsx';
 import './styles.css';
+import { SRBIJA } from './api.js';
+import { pokreniEkavicu } from './ekavica.js';
+
+if (SRBIJA) pokreniEkavicu();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

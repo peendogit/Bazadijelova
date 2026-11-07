@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../store.jsx';
+import { SRBIJA } from '../api.js';
 import * as I from './Ikone.jsx';
 
 export default function Zaglavlje() {
-  const { korisnik, odjava, korpa, sacuvano, valuta, setValuta } = useApp();
+  const { korisnik, odjava, korpa, sacuvano, valuta, sljedecaValuta } = useApp();
   const [meni, setMeni] = useState(false);
   const nav = useNavigate();
   const zatvori = () => setMeni(false);
@@ -14,7 +15,7 @@ export default function Zaglavlje() {
       <header className="zaglavlje">
         <div className="zaglavlje-unutra">
           <button className="ikona-dugme" onClick={() => setMeni(true)} aria-label="Meni"><I.Meni /></button>
-          <Link to="/" className="logo"><I.LogoZnak className="logo-znak" /><span>baza<b>dijelova</b></span></Link>
+          <Link to="/" className="logo"><I.LogoZnak className="logo-znak" /><span>baza<b>{SRBIJA ? 'delova' : 'dijelova'}</b></span></Link>
           <div className="razmak" />
           <Link to="/sacuvano" className="ikona-dugme sakrij-mob" aria-label="Sačuvano">
             <I.Zastavica />{sacuvano.length > 0 && <span className="znacka">{sacuvano.length}</span>}
@@ -22,7 +23,7 @@ export default function Zaglavlje() {
           <Link to="/korpa" className="ikona-dugme" aria-label="Korpa">
             <I.Korpa />{korpa.length > 0 && <span className="znacka">{korpa.length}</span>}
           </Link>
-          <button className="valuta" onClick={() => setValuta(valuta === 'KM' ? 'EUR' : 'KM')} title="Promijeni valutu">
+          <button className="valuta" onClick={sljedecaValuta} title="Promijeni valutu">
             {valuta}
           </button>
           <button
@@ -40,12 +41,13 @@ export default function Zaglavlje() {
           <div className="zavjesa" onClick={zatvori} />
           <nav className="meni" onClick={(e) => e.target.closest('a,button.stavka') && zatvori()}>
             <div className="traka" style={{ padding: '0 6px' }}>
-              <span className="logo"><I.LogoZnak className="logo-znak" /><span>baza<b>dijelova</b></span></span>
+              <span className="logo"><I.LogoZnak className="logo-znak" /><span>baza<b>{SRBIJA ? 'delova' : 'dijelova'}</b></span></span>
               <button className="ikona-dugme" onClick={zatvori} aria-label="Zatvori"><I.Zatvori /></button>
             </div>
             <Link to="/"><I.Kuca width="20" />Početna</Link>
             <Link to="/dijelovi"><I.Lupa width="20" />Svi dijelovi</Link>
             <Link to="/marke"><I.Auto width="20" />Marke vozila</Link>
+            <Link to="/trazim"><I.Poruka width="20" />Tražim dio</Link>
             <Link to="/otpadi"><I.Lokacija width="20" />Otpadi</Link>
             <Link to="/sacuvano"><I.Zastavica width="20" />Sačuvano ({sacuvano.length})</Link>
             <Link to="/korpa"><I.Korpa width="20" />Korpa ({korpa.length})</Link>
@@ -61,7 +63,7 @@ export default function Zaglavlje() {
             ) : (
               <>
                 <Link to="/prijava"><I.Korisnik width="20" />Prijava</Link>
-                <Link to="/registracija?tip=otpad"><I.Upload width="20" />Registruj otpad</Link>
+                <Link to="/za-otpade"><I.Upload width="20" />Za otpade</Link>
               </>
             )}
           </nav>
