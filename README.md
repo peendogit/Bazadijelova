@@ -18,41 +18,21 @@ Tržište polovnih auto dijelova iz više otpada (BiH i region). Raspored po uzo
 
 ## Instalacija na serveru (Termius)
 
-Nova verzija ide u **poseban folder i posebnu bazu**, pa stara ostaje netaknuta dok ne provjeriš novu.
+Vidi komande u razgovoru s Claudeom ili:
 
 ```bash
-# 1. Kod
-cd /var/www
-git clone https://github.com/peendogit/bazadijelova.git bazadijelova2
-cd bazadijelova2
-
-# 2. Baza (izmisli lozinku umjesto NOVA_LOZINKA)
-sudo -u postgres psql -c "CREATE USER bazadijelova2 WITH PASSWORD 'NOVA_LOZINKA';"
-sudo -u postgres psql -c "CREATE DATABASE bazadijelova2 OWNER bazadijelova2;"
-
-# 3. Podešavanja
-cp server/.env.example server/.env
-nano server/.env     # upiši lozinku baze, JWT_SECRET (dug nasumičan tekst) i admin lozinku
-
-# 4. Instalacija, katalog i admin nalog
+cd /var/www && git clone https://github.com/peendogit/bazadijelova.git && cd bazadijelova
+cp server/.env.example server/.env && nano server/.env
 cd server && npm install --omit=dev && npm run seed && cd ..
-#    (za probu sa demo otpadima i 750 dijelova: npm run seed:demo)
-
-# 5. Ugasi staru verziju na portu 3004 (ime vidiš u: pm2 ls)
-pm2 stop STARO_IME
-
-# 6. Frontend + pokretanje
 bash deploy.sh --force
 ```
-
-Nginx: ako stara verzija već ima Nginx konfiguraciju za bazadijelova.com na port 3004, ne moraš ništa mijenjati. Ako nema, kopiraj `nginx.conf` u `/etc/nginx/sites-available/bazadijelova`, napravi link u `sites-enabled` i pokreni `nginx -t && systemctl reload nginx`.
 
 ### Automatski deploy
 
 ```bash
 crontab -e
 # dodaj red:
-*/5 * * * * cd /var/www/bazadijelova2 && bash deploy.sh >> /var/log/bazadijelova2-deploy.log 2>&1
+*/5 * * * * cd /var/www/bazadijelova && bash deploy.sh >> /var/log/bazadijelova-deploy.log 2>&1
 ```
 
 Svakih 5 minuta provjerava GitHub i, ako ima novog koda, gradi i restartuje aplikaciju.

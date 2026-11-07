@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'bazadijelova2',
+      name: 'bazadijelova',
       cwd: __dirname + '/server',
       script: 'index.js',
       env: { NODE_ENV: 'production' },
