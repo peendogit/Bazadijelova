@@ -16,13 +16,11 @@ export function Provider({ children }) {
   const [valuta, setValuta] = useState(() => citaj('bd_valuta', 'KM'));
   const [korpa, setKorpa] = useState(() => citaj('bd_korpa', []));       // [{id, naziv, cijena_km, otpad_id, otpad, slika}]
   const [sacuvano, setSacuvano] = useState(() => citaj('bd_sacuvano', [])); // isti oblik
-  const [garaza, setGaraza] = useState(() => citaj('bd_garaza', []));     // [{tablica, vin, opis, generacija_id}]
   const [poruka, setPoruka] = useState(null);
 
   useEffect(() => pisi('bd_valuta', valuta), [valuta]);
   useEffect(() => pisi('bd_korpa', korpa), [korpa]);
   useEffect(() => pisi('bd_sacuvano', sacuvano), [sacuvano]);
-  useEffect(() => pisi('bd_garaza', garaza), [garaza]);
 
   useEffect(() => {
     let t = null;
@@ -72,17 +70,12 @@ export function Provider({ children }) {
     return `${n.toLocaleString('bs-BA', { minimumFractionDigits: 0, maximumFractionDigits: valuta === 'EUR' ? 2 : 0 })} ${valuta === 'EUR' ? '€' : 'KM'}`;
   };
 
-  const sacuvajVozilo = (v) =>
-    setGaraza((g) => [v, ...g.filter((x) => x.tablica !== v.tablica && x.vin !== v.vin)].slice(0, 10));
-  const obrisiVozilo = (vin) => setGaraza((g) => g.filter((x) => x.vin !== vin));
-
   return (
     <Ctx.Provider value={{
       korisnik, ucitan, prijava, odjava,
       valuta, setValuta, cijena,
       korpa, setKorpa, uKorpi, dodajUKorpu, izbaciIzKorpe,
       sacuvano, jeSacuvan, prebaciSacuvano,
-      garaza, sacuvajVozilo, obrisiVozilo,
       poruka, obavijest,
     }}>
       {children}

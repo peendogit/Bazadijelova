@@ -1,8 +1,7 @@
-// Javni API: katalog, pretraga dijelova, VIN, otpadi
+// Javni API: katalog, pretraga dijelova, otpadi
 import { Router } from 'express';
 import { q } from '../db/index.js';
 import { asyncH, int, normOem } from '../lib/util.js';
-import { dekodirajVin } from '../lib/vin.js';
 
 const r = Router();
 
@@ -55,43 +54,6 @@ r.get('/generacije/:id', asyncH(async (req, res) => {
        WHERE d.generacija_id = $1 AND d.kategorija_id = k.id AND ${AKTIVAN}) broj
     FROM kategorije k ORDER BY k.redoslijed`, [g.id]);
   res.json({ ...g, kategorije, ukupno: kategorije.reduce((s, k) => s + k.broj, 0) });
-}));
-
-// ---------- VIN ----------
-
-r.get('/vin/:vin', asyncH(async (req, res) => {
-  const d = dekodirajVin(req.params.vin);
-  if (d.greska) return res.status(400).json(d);
-  if (!d.marka) return res.json({ ...d, generacije: [], poruka: 'Proizvođač nije prepoznat. Izaberite vozilo ručno.' });
-
-  const { rows: [marka] } = await q(`SELECT id, naziv, slug FROM marke WHERE naziv = $1`, [d.marka]);
-  if (!marka) return res.json({ ...d, generacije: [], poruka: 'Ova marka još nije u katalogu.' });
-
-  // Kandidati: po tvorničkom kodu (VAG) i/ili po godini
-  const { rows: sve } = await q(`
-    SELECT g.id, g.naziv, g.kod, g.od_god, g.do_god, mo.naziv model,
-      (SELECT COUNT(*)::int FROM dijelovi d JOIN otpadi o ON o.id = d.otpad_id AND o.odobren
-       WHERE d.generacija_id = g.id AND ${AKTIVAN}) broj
-    FROM generacije g JOIN modeli mo ON mo.id = g.model_id
-    WHERE mo.marka_id = $1 ORDER BY mo.naziv, g.od_god`, [marka.id]);
-
-  const uGodini = (g, god) => god >= g.od_god && god <= g.do_god;
-  let gens = sve;
-  let godina = d.godina;
-  if (d.kod) {
-    const poKodu = sve.filter((g) => g.kod === d.kod);
-    if (poKodu.length) gens = poKodu;
-  }
-  // razriješi dvosmislenu godinu (npr. 1996 ili 2026) prema generacijama
-  if (d.godine.length > 1) {
-    godina = [...d.godine].reverse().find((god) => gens.some((g) => uGodini(g, god))) || d.godina;
-  }
-  if (godina) {
-    const poGodini = gens.filter((g) => uGodini(g, godina));
-    if (poGodini.length) gens = poGodini;
-  }
-  const tacno = d.kod && gens.length === 1;
-  res.json({ ...d, godina, marka_slug: marka.slug, generacije: gens.slice(0, 30), tacno });
 }));
 
 // ---------- Dijelovi ----------

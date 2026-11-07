@@ -152,7 +152,6 @@ label.oznaka { display: block; font-size: .85rem; color: var(--siva); margin: 12
 .pretraga-red { display: flex; gap: 10px; }
 .pretraga-red .polje-pretrage { flex: 1; }
 @media (max-width: 520px) { .pretraga-red { flex-direction: column; } .pretraga-red .polje-pretrage { flex: none; } .pretraga-red .dugme { height: 50px; } }
-.tablica-unos input { text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
 
 .statistika { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 18px; color: var(--siva); font-size: .9rem; }
 .statistika b { color: var(--tekst); font-size: 1.05rem; }

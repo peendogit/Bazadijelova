@@ -6,8 +6,6 @@ Tržište polovnih auto dijelova iz više otpada (BiH i region). Raspored po uzo
 
 ## Funkcije
 
-- **Pretraga po broju šasije (VIN):** prepoznaje marku i godište, a za VW, Audi, Škodu i Seat i tačnu generaciju (iz 7. i 8. znaka).
-- **Pretraga po tablicama:** tablica se jednom poveže s brojem šasije i pamti se u telefonu kupca. U BiH nema javne baze tablica, pa je ovo jedini pouzdan način.
 - **Marka → model → generacija → grupa dijelova**, plavo „ima na stanju”, crveno „nema”.
 - **Pretraga po OEM broju** (radi s razmacima i bez njih) i nazivu, filteri po stanju, cijeni i grupi. Na stranici dijela prikazuje se isti OEM kod drugih otpada.
 - **Ocjena stanja** (Novo / Odlično / Dobro / Oštećeno) i kilometraža vozila donora.
@@ -62,6 +60,6 @@ Dijelovi se uparuju po `sifra`. Uz `"potpuno": true`, sve čega nema u listi ozn
 ## Struktura
 
 ```
-server/   index.js, routes/ (javno, auth, kupac, otpad, admin, api-uvoz), lib/ (vin, uvoz, auth), db/ (schema.sql, seed.js, katalog)
+server/   index.js, routes/ (javno, auth, kupac, otpad, admin, api-uvoz), lib/ (uvoz, auth), db/ (schema.sql, seed.js, katalog)
 client/   src/pages (Pocetna, Marka, Generacija, Dijelovi, Dio, Korpa, Panel, Admin...), src/components
 ```
