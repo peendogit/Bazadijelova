@@ -56,6 +56,29 @@ r.post('/prijava', asyncH(async (req, res) => {
   res.json({ token: potpisi(k), korisnik: javniKorisnik(k) });
 }));
 
+// ---------- Brza demo prijava ----------
+// Radi SAMO kad je u .env DEMO_PRIJAVA=1. Daje prijavu bez lozinke na naloge @demo.ba.
+// Isključi (obriši red ili stavi 0) prije nego što sajt pustiš kupcima!
+const demoUkljucen = () => process.env.DEMO_PRIJAVA === '1';
+
+r.get('/demo', asyncH(async (_req, res) => {
+  if (!demoUkljucen()) return res.json({ ukljucen: false, nalozi: [] });
+  const { rows } = await q(`
+    SELECT k.email, k.ime, k.uloga, o.naziv otpad FROM korisnici k LEFT JOIN otpadi o ON o.id = k.otpad_id
+    WHERE k.email LIKE '%@demo.ba'
+    ORDER BY CASE k.uloga WHEN 'kupac' THEN 0 WHEN 'otpad' THEN 1 ELSE 2 END, k.email`);
+  res.json({ ukljucen: true, nalozi: rows });
+}));
+
+r.post('/demo', asyncH(async (req, res) => {
+  if (!demoUkljucen()) return res.status(404).json({ greska: 'Demo prijava je isključena.' });
+  const email = String(req.body?.email || '');
+  if (!email.endsWith('@demo.ba')) return res.status(400).json({ greska: 'Samo demo nalozi.' });
+  const { rows: [k] } = await q(`SELECT * FROM korisnici WHERE email = $1`, [email]);
+  if (!k) return res.status(404).json({ greska: 'Demo nalog ne postoji. Pokreni npm run seed:demo.' });
+  res.json({ token: potpisi(k), korisnik: javniKorisnik(k) });
+}));
+
 r.get('/ja', prijavljen, asyncH(async (req, res) => {
   const { rows: [k] } = await q(`SELECT * FROM korisnici WHERE id = $1`, [req.korisnik.id]);
   if (!k) return res.status(401).json({ greska: 'Nalog ne postoji.' });

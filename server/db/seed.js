@@ -101,7 +101,12 @@ async function demo() {
       );
     }
   }
-  console.log('✓ Demo otpadi i dijelovi (lozinka za demo naloge: demo1234)');
+  for (const [email, ime, uloga] of [['kupac@demo.ba', 'Demo Kupac', 'kupac'], ['admin@demo.ba', 'Demo Admin', 'admin']]) {
+    await q(
+      `INSERT INTO korisnici (email, lozinka_hash, ime, telefon, uloga) VALUES ($1,$2,$3,'065 000 000',$4)
+       ON CONFLICT (email) DO NOTHING`, [email, lozinka, ime, uloga]);
+  }
+  console.log('✓ Demo otpadi, dijelovi, kupac@demo.ba i admin@demo.ba (lozinka za demo naloge: demo1234)');
 }
 
 try {

@@ -56,7 +56,8 @@ Svakih 5 minuta provjerava GitHub i, ako ima novog koda, gradi i restartuje apli
 
 - **Admin:** email i lozinka iz `server/.env` (`ADMIN_EMAIL`, `ADMIN_LOZINKA`).
 - **Otpadi** se registruju sami na `/registracija?tip=otpad`, a admin ih odobrava u `/admin`.
-- Demo nalozi (samo uz `seed:demo`): `auto-otpad-delic@demo.ba`, lozinka `demo1234`.
+- Demo nalozi (samo uz `seed:demo`): `kupac@demo.ba`, `admin@demo.ba`, `auto-otpad-delic@demo.ba`… lozinka `demo1234`.
+- **Brza demo prijava:** u `server/.env` stavi `DEMO_PRIJAVA=1` pa `pm2 restart bazadijelova`. Na stranici za prijavu i u meniju pojave se dugmad za prebacivanje između demo naloga bez lozinke. **Prije puštanja kupcima stavi `DEMO_PRIJAVA=0`**, inače svako može ući kao demo admin.
 
 ## Uvoz iz drugog programa (API)
 

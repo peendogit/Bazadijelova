@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useApp } from '../store.jsx';
+import DemoPrijava from '../components/DemoPrijava.jsx';
 
 const pocetnaZa = (k) => (k.uloga === 'admin' ? '/admin' : k.uloga === 'otpad' ? '/panel' : '/moj-nalog');
 
@@ -36,6 +37,7 @@ export function Prijava() {
       <p className="tiho" style={{ textAlign: 'center', marginBottom: 0 }}>
         Nemate nalog? <Link to="/registracija">Registrujte se</Link>
       </p>
+      <DemoPrijava />
     </div>
   );
 }

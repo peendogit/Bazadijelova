@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../store.jsx';
 import { SRBIJA } from '../api.js';
 import * as I from './Ikone.jsx';
+import DemoPrijava from './DemoPrijava.jsx';
 
 export default function Zaglavlje() {
   const { korisnik, odjava, korpa, sacuvano, valuta, sljedecaValuta } = useApp();
@@ -66,6 +67,7 @@ export default function Zaglavlje() {
                 <Link to="/za-otpade"><I.Upload width="20" />Za otpade</Link>
               </>
             )}
+            <DemoPrijava kompaktno onGotovo={zatvori} />
           </nav>
         </>
       )}
