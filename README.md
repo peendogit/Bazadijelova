@@ -16,8 +16,8 @@ Tržište polovnih auto dijelova iz više otpada (BiH i region). Raspored po uzo
 - **Uvoz zaliha:** CSV iz Excela, API (`POST /api/uvoz`), ili **automatsko povezivanje s Delić programom** (`/shop-api`, svakih 15 min).
 - **Paketi:** besplatno do 100 dijelova, Pro bez ograničenja + izdvojeni oglasi na vrhu pretrage. Admin uključuje Pro ručno.
 - **Srbija:** na bazadelova.com sav tekst ide u ekavicu, cijene u dinarima (kurs `KURS_RSD_EUR`).
-- **Brza pošta:** svaki otpad u Panel → Profil i dostava upiše svoje pošte i razrede („do 10 kg = 15 KM”). Sajt sabere težinu dijelova u paketu i pokaže tačnu poštarinu na dijelu i u korpi, a kupac bira poštu.
-- **Težine dijelova:** admin u /admin uređuje tipove dijelova i njihove težine (npr. Letva volana 15 kg). Dio dobije tip sam po nazivu, a otpad ga može promijeniti ili upisati tačnu težinu.
+- **Brza pošta:** svaki otpad u Panel → **Brza pošta** upiše svoje pošte i razrede („do 10 kg = 15 KM”). Sajt sabere težinu dijelova u paketu i pokaže tačnu poštarinu na dijelu i u korpi, a kupac bira poštu.
+- **Težine dijelova:** admin u /admin uređuje tipove dijelova i njihove težine (npr. Letva volana 15 kg). Dio dobije tip sam po nazivu. Otpad na stranici Brza pošta može za sebe promijeniti težinu svakog tipa, a na dijelu upisati tačnu težinu (redoslijed: težina dijela → težina otpada → standardna).
 - **Aplikacija na telefonu:** dugme „Instaliraj aplikaciju” u meniju i na početnoj (Android), uputstvo za iPhone. Radi samo preko https.
 - **SEO:** svaka stranica ima svoj naslov, opis i Google podatke o proizvodu; `sitemap.xml` i `robots.txt` za oba domena.
 

@@ -11,7 +11,7 @@ import { parsirajCsv, uveziDijelove } from '../lib/uvoz.js';
 import { stanjePaketa, POSTAVKE } from '../lib/paket.js';
 import { BOT_IME, ukljucen as tgUkljucen, noviKod, posalji, poruke } from '../lib/telegram.js';
 import { sinhronizujOtpad } from '../lib/izvor.js';
-import { cjenovnik } from '../lib/postarina.js';
+import { cjenovnik, TEZINA } from '../lib/postarina.js';
 import { ucitajTipove, nadjiTip } from '../lib/tipovi.js';
 
 const r = Router();
@@ -92,6 +92,38 @@ r.put('/postarina', asyncH(async (req, res) => {
     }
   });
   res.json(await cjenovnik(otpadId(req)));
+}));
+
+// ---------- Težine tipova dijelova (otpad ih mijenja za sebe) ----------
+
+r.get('/tezine', asyncH(async (req, res) => {
+  const { rows } = await q(`
+    SELECT t.id, t.naziv, t.kategorija_id, k.naziv kategorija, t.tezina_kg standard_kg, ot.tezina_kg moja_kg,
+      (SELECT COUNT(*)::int FROM dijelovi d WHERE d.tip_id = t.id AND d.otpad_id = $1 AND d.status = 'aktivan') dijelova
+    FROM tipovi_dijelova t
+    LEFT JOIN kategorije k ON k.id = t.kategorija_id
+    LEFT JOIN otpad_tezine ot ON ot.tip_id = t.id AND ot.otpad_id = $1
+    ORDER BY k.redoslijed NULLS LAST, t.naziv`, [otpadId(req)]);
+  const { rows: [{ bez }] } = await q(
+    `SELECT COUNT(*)::int bez FROM dijelovi d WHERE d.otpad_id = $1 AND d.status = 'aktivan' AND d.tip_id IS NULL AND d.tezina_kg IS NULL`, [otpadId(req)]);
+  res.json({ tipovi: rows, bez_tezine: bez });
+}));
+
+// { tezine: { tip_id: kg ili '' (vrati na standardnu) } }
+r.put('/tezine', asyncH(async (req, res) => {
+  const t = req.body?.tezine;
+  if (!t || typeof t !== 'object') return res.status(400).json({ greska: 'Nema izmjena.' });
+  const unosi = Object.entries(t).slice(0, 500).map(([id, v]) => [int(id), tezina(v)]).filter(([id]) => id);
+  for (const [id, kg] of unosi) if (kg !== null && !(kg > 0)) return res.status(400).json({ greska: 'Težina mora biti veća od 0.' });
+  await transakcija(async (db) => {
+    for (const [id, kg] of unosi) {
+      if (kg === null) await db.query(`DELETE FROM otpad_tezine WHERE otpad_id = $1 AND tip_id = $2`, [otpadId(req), id]);
+      else await db.query(
+        `INSERT INTO otpad_tezine (otpad_id, tip_id, tezina_kg) VALUES ($1,$2,$3)
+         ON CONFLICT (otpad_id, tip_id) DO UPDATE SET tezina_kg = EXCLUDED.tezina_kg`, [otpadId(req), id, kg]);
+    }
+  });
+  res.json({ ok: true, izmijenjeno: unosi.length });
 }));
 
 // ---------- Telegram ----------
@@ -187,7 +219,7 @@ r.get('/dijelovi', asyncH(async (req, res) => {
   }
   const strana = Math.max(1, int(req.query.strana, 1));
   const { rows } = await q(`
-    SELECT d.*, m.naziv marka, g.naziv generacija, mo.naziv model, k.naziv kategorija, t.naziv tip, t.tezina_kg tip_tezina_kg
+    SELECT d.*, m.naziv marka, g.naziv generacija, mo.naziv model, k.naziv kategorija, t.naziv tip, ${TEZINA} AS tezina
     FROM dijelovi d LEFT JOIN marke m ON m.id = d.marka_id LEFT JOIN generacije g ON g.id = d.generacija_id
     LEFT JOIN modeli mo ON mo.id = g.model_id LEFT JOIN kategorije k ON k.id = d.kategorija_id
     LEFT JOIN tipovi_dijelova t ON t.id = d.tip_id

@@ -245,3 +245,11 @@ CREATE INDEX IF NOT EXISTS idx_kurir_cijene ON kurir_cijene(sluzba_id, do_kg);
 ALTER TABLE narudzbe ADD COLUMN IF NOT EXISTS kurir TEXT;
 ALTER TABLE narudzbe ADD COLUMN IF NOT EXISTS tezina_kg NUMERIC(7,2);
 ALTER TABLE narudzbe ADD COLUMN IF NOT EXISTS dostava_po_dogovoru BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Otpad može za sebe promijeniti težinu tipa dijela (ima prednost nad standardnom težinom admina)
+CREATE TABLE IF NOT EXISTS otpad_tezine (
+  otpad_id  INTEGER NOT NULL REFERENCES otpadi(id) ON DELETE CASCADE,
+  tip_id    INTEGER NOT NULL REFERENCES tipovi_dijelova(id) ON DELETE CASCADE,
+  tezina_kg NUMERIC(7,2) NOT NULL,
+  PRIMARY KEY (otpad_id, tip_id)
+);

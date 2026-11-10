@@ -1,8 +1,10 @@
 // Obračun poštarine: težina paketa (zbir težina dijelova) → razred u cjenovniku svake pošte otpada.
 import { q } from '../db/index.js';
 
-// SQL izraz za težinu dijela: ručna težina, inače težina tipa
-export const TEZINA = `COALESCE(d.tezina_kg, (SELECT t.tezina_kg FROM tipovi_dijelova t WHERE t.id = d.tip_id))`;
+// SQL izraz za težinu dijela: ručna težina dijela → težina tipa koju je otpad sam postavio → standardna težina tipa
+export const TEZINA = `COALESCE(d.tezina_kg,
+  (SELECT ot.tezina_kg FROM otpad_tezine ot WHERE ot.otpad_id = d.otpad_id AND ot.tip_id = d.tip_id),
+  (SELECT t.tezina_kg FROM tipovi_dijelova t WHERE t.id = d.tip_id))`;
 
 export async function cjenovnik(otpadId, db = { query: q }) {
   const { rows } = await db.query(`

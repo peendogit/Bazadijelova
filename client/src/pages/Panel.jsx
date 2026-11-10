@@ -28,6 +28,7 @@ export default function Panel() {
         <NavLink to="/panel/narudzbe">Narudžbe{s.novih_narudzbi ? ` (${s.novih_narudzbi})` : ''}</NavLink>
         <NavLink to="/panel/upiti">Upiti{s.novih_upita ? ` (${s.novih_upita})` : ''}</NavLink>
         <NavLink to="/panel/zahtjevi">Tražim dio</NavLink>
+        <NavLink to="/panel/posta">Brza pošta</NavLink>
         <NavLink to="/panel/uvoz">Uvoz zaliha</NavLink>
         <NavLink to="/panel/profil">Profil i dostava</NavLink>
       </nav>
@@ -35,6 +36,7 @@ export default function Panel() {
         <Route index element={<Pregled s={s} profil={profil} />} />
         <Route path="dijelovi" element={<PanelDijelovi onPromjena={osvjezi} pro={profil.paket.pro} />} />
         <Route path="zahtjevi" element={<PanelZahtjevi />} />
+        <Route path="posta" element={<StranicaPosta pausal={profil.dostava_cijena_km} />} />
         <Route path="narudzbe" element={<PanelNarudzbe onPromjena={osvjezi} />} />
         <Route path="upiti" element={<PanelUpiti onPromjena={osvjezi} />} />
         <Route path="uvoz" element={<PanelUvoz profil={profil} onPromjena={osvjezi} />} />
@@ -70,6 +72,7 @@ function Pregled({ s, profil }) {
         <Link to="/panel/dijelovi?novi=1" className="dugme"><I.Dio />Dodaj dio</Link>
         <Link to="/panel/uvoz" className="dugme sekundarno"><I.Upload />Uvezi zalihe</Link>
         <Link to="/panel/zahtjevi" className="dugme obrub"><I.Poruka />Kupci traže</Link>
+        <Link to="/panel/posta" className="dugme obrub"><I.Kamion />Brza pošta</Link>
       </div>
     </div>
     </>
@@ -94,7 +97,7 @@ function FormaDijela({ dio, onZatvori, onSnimljeno }) {
   useEffect(() => {
     api('/marke').then(setMarke).catch(() => {});
     api('/kategorije').then(setKategorije).catch(() => {});
-    api('/tipovi').then(setTipovi).catch(() => {});
+    api('/moj-otpad/tezine').then((r) => setTipovi(r.tipovi.map((t) => ({ ...t, tezina_kg: t.moja_kg ?? t.standard_kg })))).catch(() => {});
   }, []);
   const tip = tipovi.find((t) => String(t.id) === String(f.tip_id));
   const tipoviPoGrupi = tipovi.reduce((a, t) => { (a[t.kategorija || 'Ostalo'] ||= []).push(t); return a; }, {});
@@ -274,7 +277,7 @@ function PanelDijelovi({ onPromjena, pro }) {
               <tbody>
                 {podaci.dijelovi.map((d) => (
                   <tr key={d.id}>
-                    <td><b>{d.naziv}</b>{d.izdvojen_do && new Date(d.izdvojen_do) > new Date() && <span className="oznaka-stanja izdvojeno" style={{ marginLeft: 6 }}>★</span>}<div className="tiho malo">{d.oem}{d.vanjska_sifra ? ` · šifra ${d.vanjska_sifra}` : ''}{(d.tezina_kg ?? d.tip_tezina_kg) != null ? ` · ${Number(d.tezina_kg ?? d.tip_tezina_kg)} kg` : ' · težina nepoznata'}</div></td>
+                    <td><b>{d.naziv}</b>{d.izdvojen_do && new Date(d.izdvojen_do) > new Date() && <span className="oznaka-stanja izdvojeno" style={{ marginLeft: 6 }}>★</span>}<div className="tiho malo">{d.oem}{d.vanjska_sifra ? ` · šifra ${d.vanjska_sifra}` : ''}{d.tezina != null ? ` · ${Number(d.tezina)} kg` : ' · težina nepoznata'}</div></td>
                     <td className="malo">{[d.marka, d.generacija].filter(Boolean).join(' ') || <span className="tiho">nije povezano</span>}</td>
                     <td>{STANJA[d.stanje]?.naziv}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{d.cijena_km > 0 ? cijena(d.cijena_km) : <span className="tiho">na upit</span>}</td>
@@ -693,6 +696,86 @@ function CjenovnikPoste() {
   );
 }
 
+// ---------- Stranica: Brza pošta ----------
+
+function StranicaPosta({ pausal }) {
+  const { cijena } = useApp();
+  return (
+    <>
+      <CjenovnikPoste />
+      <TezineTipova />
+      <div className="info">
+        Dijelovi bez težine (nepoznat tip) šalju se po paušalu od <b>{cijena(pausal || 0)}</b>. Paušal mijenjate u <Link to="/panel/profil">Profil i dostava</Link>.
+      </div>
+    </>
+  );
+}
+
+function TezineTipova() {
+  const { obavijest } = useApp();
+  const [podaci, setPodaci] = useState(null);
+  const [izmjene, setIzmjene] = useState({});
+  const [filter, setFilter] = useState('');
+  const [samoMoji, setSamoMoji] = useState(false);
+  const [greska, setGreska] = useState('');
+  const ucitaj = () => api('/moj-otpad/tezine').then((r) => { setPodaci(r); setIzmjene({}); }).catch(() => {});
+  useEffect(() => { ucitaj(); }, []);
+  if (!podaci) return null;
+
+  const vrijednost = (t) => (t.id in izmjene ? izmjene[t.id] : t.moja_kg != null ? String(Number(t.moja_kg)) : '');
+  const broj = Object.keys(izmjene).length;
+  async function snimi() {
+    setGreska('');
+    try {
+      await api('/moj-otpad/tezine', { metoda: 'PUT', tijelo: { tezine: izmjene } });
+      obavijest('Težine snimljene'); ucitaj();
+    } catch (e) { setGreska(e.message); }
+  }
+
+  const f = filter.trim().toLowerCase();
+  const lista = podaci.tipovi.filter((t) =>
+    (!f || t.naziv.toLowerCase().includes(f) || (t.kategorija || '').toLowerCase().includes(f)) &&
+    (!samoMoji || t.dijelova > 0 || t.moja_kg != null));
+  const grupe = lista.reduce((a, t) => { (a[t.kategorija || 'Ostalo'] ||= []).push(t); return a; }, {});
+
+  return (
+    <div className="kartica kartica-tijelo" style={{ marginTop: 12 }}>
+      <h2>Težine tipova dijelova</h2>
+      <p className="tiho malo" style={{ marginTop: 0 }}>
+        Po težini se bira razred u cjenovniku pošte. Upišite koliko kod vas teži spakovan dio. Prazno polje znači da važi standardna težina (siva).
+        {podaci.bez_tezine > 0 && <> Dijelova bez tipa i težine: <b>{podaci.bez_tezine}</b>.</>}
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+        <input className="unos" style={{ flex: 1, minWidth: 160 }} placeholder="Traži tip, npr. letva" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <label className="cekiranje"><input type="checkbox" checked={samoMoji} onChange={(e) => setSamoMoji(e.target.checked)} />Samo tipovi koje imam</label>
+      </div>
+      {Object.entries(grupe).map(([g, tipovi]) => (
+        <div key={g} className="grupa-tezina">
+          <div className="grupa-tezina-naslov">{g}</div>
+          {tipovi.map((t) => {
+            const v = vrijednost(t);
+            return (
+              <div key={t.id} className={`tezina-red ${v !== '' ? 'moja' : ''}`}>
+                <span className="tezina-naziv">{t.naziv}{t.dijelova > 0 && <small> · {t.dijelova} kom</small>}</span>
+                <input className="unos" inputMode="decimal" value={v} placeholder={String(Number(t.standard_kg))}
+                  aria-label={`Težina: ${t.naziv}`}
+                  onChange={(e) => setIzmjene({ ...izmjene, [t.id]: e.target.value })} />
+                <span className="tiho">kg</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {!lista.length && <p className="tiho">Nema tipova za ovu pretragu.</p>}
+      {greska && <div className="greska">{greska}</div>}
+      <div className="snimi-traka">
+        <button className="dugme" onClick={snimi} disabled={!broj}>{broj ? `Snimi težine (${broj})` : 'Snimi težine'}</button>
+        {broj > 0 && <button className="dugme obrub" onClick={() => setIzmjene({})}>Poništi</button>}
+      </div>
+    </div>
+  );
+}
+
 function TelegramVeza({ telegram, onPromjena }) {
   const { obavijest } = useApp();
   const [link, setLink] = useState(null);
@@ -755,7 +838,6 @@ function PanelProfil({ profil, onSnimljeno }) {
   return (
     <>
     <TelegramVeza telegram={profil.telegram} onPromjena={onSnimljeno} />
-    <CjenovnikPoste />
     <form className="kartica kartica-tijelo" onSubmit={snimi}>
       <label className="oznaka">Naziv otpada</label>
       <input className="unos" value={f.naziv} onChange={p('naziv')} required />
