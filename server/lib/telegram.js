@@ -52,7 +52,8 @@ export const poruke = {
     `🛒 <b>Nova narudžba #${n.id}</b>\n` +
     stavke.map((s) => `• ${esc(s.naziv)}${s.oem ? ` (${esc(s.oem)})` : ''} — ${s.cijena_km} KM`).join('\n') +
     `\n\n👤 ${esc(n.ime)}, 📞 ${esc(n.telefon)}\n` +
-    (n.nacin === 'licno' ? '🏁 Lično preuzimanje' : `🚚 Dostava: ${esc(n.adresa)}, ${esc(n.grad)}`) +
+    (n.nacin === 'licno' ? '🏁 Lično preuzimanje' : `🚚 ${n.kurir ? `${esc(n.kurir)}: ` : 'Dostava: '}${esc(n.adresa)}, ${esc(n.grad)}` +
+      (n.tezina_kg ? ` (${n.tezina_kg} kg, ${n.dostava_po_dogovoru ? 'poštarina po dogovoru' : `${n.dostava_km} KM`})` : '')) +
     (n.napomena ? `\n📝 ${esc(n.napomena)}` : '') +
     `\n\n<a href="${SAJT()}/panel/narudzbe">Otvori narudžbe</a>`,
   upit: (u, dio) =>

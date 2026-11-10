@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { DioKartica } from '../components/Zajednicko.jsx';
 import * as I from '../components/Ikone.jsx';
+import { InstalirajBaner } from '../components/Instaliraj.jsx';
 
 function Pretraga() {
   const nav = useNavigate();
@@ -74,6 +75,7 @@ export default function Pocetna() {
 
   return (
     <>
+      <InstalirajBaner />
       <Pretraga />
       {stat && (
         <div className="statistika" style={{ padding: '0 6px' }}>

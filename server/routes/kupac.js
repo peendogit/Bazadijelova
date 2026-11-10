@@ -4,6 +4,7 @@ import { q, transakcija } from '../db/index.js';
 import { asyncH, int } from '../lib/util.js';
 import { opcionalno, prijavljen } from '../lib/auth.js';
 import crypto from 'crypto';
+import { izracunaj } from '../lib/postarina.js';
 import { obavijestiOtpad, obavijestiAdmina, poruke, posalji, BOT_IME, ukljucen as tgUkljucen } from '../lib/telegram.js';
 
 const token = () => crypto.randomBytes(12).toString('base64url');
@@ -36,7 +37,7 @@ r.post('/upiti', opcionalno, asyncH(async (req, res) => {
 // Narudžba iz korpe: stavke se razdvoje po otpadu, svaki otpad dobije svoju narudžbu.
 // Naručeni dijelovi se odmah rezervišu da ih niko drugi ne naruči.
 r.post('/narudzbe', opcionalno, asyncH(async (req, res) => {
-  const { stavke, ime, telefon, email, adresa, grad, nacin, napomena } = req.body || {};
+  const { stavke, ime, telefon, email, adresa, grad, nacin, napomena, kuriri } = req.body || {};
   const ids = [...new Set((stavke || []).map((s) => int(s)).filter(Boolean))];
   if (!ids.length) return res.status(400).json({ greska: 'Korpa je prazna.' });
   if (!ime || !telefon) return res.status(400).json({ greska: 'Unesite ime i telefon.' });
@@ -57,15 +58,26 @@ r.post('/narudzbe', opcionalno, asyncH(async (req, res) => {
       if (!poOtpadu.has(d.otpad_id)) poOtpadu.set(d.otpad_id, []);
       poOtpadu.get(d.otpad_id).push(d);
     }
+    const postarine = nacinP === 'dostava' ? await izracunaj(ids, db) : [];
     const narudzbe = [];
     for (const [otpadId, lista] of poOtpadu) {
       const ukupno = lista.reduce((s, d) => s + d.cijena_km, 0);
-      const dostava = nacinP === 'dostava' ? lista[0].dostava_cijena_km || 0 : 0;
+      // Poštarina: izabrana pošta iz cjenovnika otpada; bez cjenovnika paušal otpada
+      let dostava = 0, kurir = null, poDogovoru = false;
+      const p = postarine.find((x) => x.otpad_id === otpadId);
+      if (nacinP === 'dostava') {
+        if (p?.opcije.length) {
+          const izbor = p.opcije.find((o) => o.id === int(kuriri?.[otpadId])) || p.opcije[0];
+          kurir = izbor.naziv;
+          if (izbor.cijena_km === null) poDogovoru = true; else dostava = izbor.cijena_km;
+        } else dostava = lista[0].dostava_cijena_km || 0;
+      }
       const { rows: [n] } = await db.query(
-        `INSERT INTO narudzbe (otpad_id, korisnik_id, ime, telefon, email, adresa, grad, nacin, napomena, ukupno_km, dostava_km, token)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        `INSERT INTO narudzbe (otpad_id, korisnik_id, ime, telefon, email, adresa, grad, nacin, napomena, ukupno_km, dostava_km, token,
+           kurir, tezina_kg, dostava_po_dogovoru)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
         [otpadId, req.korisnik?.id || null, ime, telefon, email || null, adresa || null, grad || null,
-         nacinP, napomena || null, ukupno, dostava, token()]
+         nacinP, napomena || null, ukupno, dostava, token(), kurir, p && !p.nepoznato ? p.tezina_kg : null, poDogovoru]
       );
       for (const d of lista) {
         await db.query(
@@ -74,7 +86,7 @@ r.post('/narudzbe', opcionalno, asyncH(async (req, res) => {
         );
       }
       await db.query(`UPDATE dijelovi SET status = 'rezervisan', azuriran = NOW() WHERE id = ANY($1)`, [lista.map((d) => d.id)]);
-      narudzbe.push({ id: n.id, otpad_id: otpadId, otpad: lista[0].otpad, ukupno_km: ukupno, dostava_km: dostava, token: n.token, _n: n, _stavke: lista });
+      narudzbe.push({ id: n.id, otpad_id: otpadId, otpad: lista[0].otpad, ukupno_km: ukupno, dostava_km: dostava, kurir, dostava_po_dogovoru: poDogovoru, token: n.token, _n: n, _stavke: lista });
     }
     return narudzbe;
   });

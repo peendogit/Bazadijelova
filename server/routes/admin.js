@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { q } from '../db/index.js';
 import { asyncH, int } from '../lib/util.js';
 import { uloga } from '../lib/auth.js';
+import { prepoznajTipove } from '../lib/tipovi.js';
 
 const r = Router();
 r.use(uloga('admin'));
@@ -38,6 +39,55 @@ r.get('/statistika', asyncH(async (_req, res) => {
            (SELECT COUNT(*)::int FROM zahtjevi WHERE kreiran > NOW() - INTERVAL '30 days') zahtjeva_30d,
            (SELECT COUNT(*)::int FROM otpadi WHERE paket = 'pro' AND (paket_do IS NULL OR paket_do >= CURRENT_DATE)) pro_otpada`);
   res.json(s);
+}));
+
+// ---------- Tipovi dijelova (težine za poštarinu) ----------
+
+r.get('/tipovi', asyncH(async (_req, res) => {
+  const { rows } = await q(`
+    SELECT t.*, k.naziv kategorija, (SELECT COUNT(*)::int FROM dijelovi d WHERE d.tip_id = t.id AND d.status = 'aktivan') dijelova
+    FROM tipovi_dijelova t LEFT JOIN kategorije k ON k.id = t.kategorija_id ORDER BY k.redoslijed NULLS LAST, t.naziv`);
+  const { rows: [{ bez }] } = await q(`SELECT COUNT(*)::int bez FROM dijelovi WHERE tip_id IS NULL AND status = 'aktivan'`);
+  res.json({ tipovi: rows, bez_tipa: bez });
+}));
+
+function poljaTipa(b) {
+  const naziv = String(b.naziv || '').trim().slice(0, 80);
+  const kg = Number(String(b.tezina_kg ?? '').replace(',', '.'));
+  const kljucne = (Array.isArray(b.kljucne) ? b.kljucne : String(b.kljucne || '').split(','))
+    .map((x) => String(x).trim().toLowerCase()).filter(Boolean).slice(0, 20);
+  return { naziv, kg, kljucne, kat: int(b.kategorija_id) };
+}
+
+r.post('/tipovi', asyncH(async (req, res) => {
+  const t = poljaTipa(req.body || {});
+  if (!t.naziv || !(t.kg > 0)) return res.status(400).json({ greska: 'Upišite naziv i težinu veću od 0.' });
+  const { rows: [x] } = await q(
+    `INSERT INTO tipovi_dijelova (naziv, kategorija_id, tezina_kg, kljucne) VALUES ($1,$2,$3,$4)
+     ON CONFLICT (naziv) DO NOTHING RETURNING *`, [t.naziv, t.kat, t.kg, t.kljucne]);
+  if (!x) return res.status(409).json({ greska: 'Tip s tim nazivom već postoji.' });
+  const prepoznato = await prepoznajTipove();
+  res.json({ ...x, prepoznato });
+}));
+
+r.put('/tipovi/:id', asyncH(async (req, res) => {
+  const t = poljaTipa(req.body || {});
+  if (!t.naziv || !(t.kg > 0)) return res.status(400).json({ greska: 'Upišite naziv i težinu veću od 0.' });
+  const { rows: [x] } = await q(
+    `UPDATE tipovi_dijelova SET naziv = $2, kategorija_id = $3, tezina_kg = $4, kljucne = $5 WHERE id = $1 RETURNING *`,
+    [int(req.params.id), t.naziv, t.kat, t.kg, t.kljucne]);
+  const prepoznato = await prepoznajTipove();
+  res.json({ ...x, prepoznato });
+}));
+
+r.delete('/tipovi/:id', asyncH(async (req, res) => {
+  await q(`DELETE FROM tipovi_dijelova WHERE id = $1`, [int(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+// Ponovo prepoznaj tip za sve dijelove (npr. nakon izmjene ključnih riječi)
+r.post('/tipovi/prepoznaj', asyncH(async (_req, res) => {
+  res.json({ prepoznato: await prepoznajTipove({ sve: true }) });
 }));
 
 export default r;

@@ -3,6 +3,7 @@
 // Sa opcijom "potpuno" svi dijelovi otpada kojih nema u uvozu označe se kao prodani.
 import { slugify, normOem } from './util.js';
 import { stanjePaketa } from './paket.js';
+import { ucitajTipove, nadjiTip } from './tipovi.js';
 
 // Prihvata različite nazive kolona
 const ALIASI = {
@@ -23,6 +24,8 @@ const ALIASI = {
   motor: ['motor', 'engine'],
   gorivo: ['gorivo', 'fuel'],
   vin: ['vin', 'sasija', 'šasija', 'broj_sasije'],
+  tip: ['tip', 'tip_dijela', 'vrsta', 'type'],
+  tezina: ['tezina', 'težina', 'kg', 'weight'],
 };
 
 function normalizujRed(red) {
@@ -156,6 +159,7 @@ function broj(v) {
 
 export async function uveziDijelove(db, otpadId, redovi, { izvor = 'csv', potpuno = false } = {}) {
   const kat = await ucitajKatalog(db);
+  const tipovi = await ucitajTipove(db);
   const rez = { novih: 0, azuriranih: 0, prodanih: 0, gresaka: 0, preko_limita: 0, greske: [] };
   // Besplatni paket: ograničen broj aktivnih dijelova
   const paket = await stanjePaketa(otpadId, db);
@@ -181,7 +185,8 @@ export async function uveziDijelove(db, otpadId, redovi, { izvor = 'csv', potpun
     const sifra = r.sifra || `${normOem(r.oem)}-${slugify(r.naziv)}`.slice(0, 120);
     const marka = nadjiMarku(kat, r.marka);
     const genId = nadjiGeneraciju(kat, marka?.id, r);
-    const katId = nadjiKategoriju(kat, r.kategorija, r.naziv);
+    const tip = (r.tip && nadjiTip(tipovi, r.tip)) || nadjiTip(tipovi, r.naziv);
+    const katId = r.kategorija || !tip?.kategorija_id ? nadjiKategoriju(kat, r.kategorija, r.naziv) : tip.kategorija_id;
     const stanjeSirovo = String(r.stanje || 'B').toUpperCase();
     const stanje = ['A', 'B', 'C', 'N'].includes(stanjeSirovo[0]) ? stanjeSirovo[0] : 'B';
     const kolicina = Math.max(0, Math.round(broj(r.kolicina) ?? 1));
@@ -197,21 +202,22 @@ export async function uveziDijelove(db, otpadId, redovi, { izvor = 'csv', potpun
 
     const { rows: [red] } = await db.query(
       `INSERT INTO dijelovi (otpad_id, vanjska_sifra, marka_id, generacija_id, kategorija_id, naziv, oem, oem_norm,
-         stanje, km, godiste, motor, gorivo, vin_donora, cijena_km, kolicina, slike, opis, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         stanje, km, godiste, motor, gorivo, vin_donora, cijena_km, kolicina, slike, opis, status, tip_id, tezina_kg)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        ON CONFLICT (otpad_id, vanjska_sifra) DO UPDATE SET
          marka_id = EXCLUDED.marka_id, generacija_id = EXCLUDED.generacija_id, kategorija_id = EXCLUDED.kategorija_id,
          naziv = EXCLUDED.naziv, oem = EXCLUDED.oem, oem_norm = EXCLUDED.oem_norm, stanje = EXCLUDED.stanje,
          km = EXCLUDED.km, godiste = EXCLUDED.godiste, motor = EXCLUDED.motor, gorivo = EXCLUDED.gorivo,
          vin_donora = EXCLUDED.vin_donora, cijena_km = EXCLUDED.cijena_km, kolicina = EXCLUDED.kolicina,
          slike = CASE WHEN array_length(EXCLUDED.slike, 1) > 0 THEN EXCLUDED.slike ELSE dijelovi.slike END,
-         opis = EXCLUDED.opis,
+         opis = EXCLUDED.opis, tip_id = EXCLUDED.tip_id,
+         tezina_kg = COALESCE(EXCLUDED.tezina_kg, dijelovi.tezina_kg),
          status = CASE WHEN dijelovi.status = 'rezervisan' AND EXCLUDED.status = 'aktivan' THEN 'rezervisan' ELSE EXCLUDED.status END,
          azuriran = NOW()
        RETURNING (xmax = 0) AS nov`,
       [otpadId, sifra, marka?.id || null, genId, katId, r.naziv, r.oem || null, normOem(r.oem) || null,
        stanje, broj(r.km), broj(r.godiste), r.motor || null, r.gorivo || null, r.vin || null,
-       cijena, kolicina, slike, r.opis || null, kolicina > 0 ? 'aktivan' : 'prodan']
+       cijena, kolicina, slike, r.opis || null, kolicina > 0 ? 'aktivan' : 'prodan', tip?.id || null, broj(r.tezina)]
     );
     red.nov ? rez.novih++ : rez.azuriranih++;
   }

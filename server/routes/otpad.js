@@ -11,6 +11,8 @@ import { parsirajCsv, uveziDijelove } from '../lib/uvoz.js';
 import { stanjePaketa, POSTAVKE } from '../lib/paket.js';
 import { BOT_IME, ukljucen as tgUkljucen, noviKod, posalji, poruke } from '../lib/telegram.js';
 import { sinhronizujOtpad } from '../lib/izvor.js';
+import { cjenovnik } from '../lib/postarina.js';
+import { ucitajTipove, nadjiTip } from '../lib/tipovi.js';
 
 const r = Router();
 r.use(uloga('otpad', 'admin'));
@@ -51,6 +53,45 @@ r.get('/profil', asyncH(async (req, res) => {
     telegram: { ukljucen: tgUkljucen(), povezan: !!o.telegram_chat_id, bot: BOT_IME() },
     izvor: { povezan: !!(o.izvor_url && izvor_kljuc), url: o.izvor_url, zadnje: o.izvor_zadnje, greska: o.izvor_greska },
   });
+}));
+
+// ---------- Cjenovnik brze pošte ----------
+
+r.get('/postarina', asyncH(async (req, res) => {
+  res.json(await cjenovnik(otpadId(req)));
+}));
+
+// Snima cijeli cjenovnik odjednom: [{ naziv, razredi: [{ do_kg, cijena_km }] }]
+r.put('/postarina', asyncH(async (req, res) => {
+  const lista = Array.isArray(req.body?.sluzbe) ? req.body.sluzbe : null;
+  if (!lista) return res.status(400).json({ greska: 'Nedostaje lista pošta.' });
+  const broj = (v) => { const n = Number(String(v ?? '').replace(',', '.')); return Number.isFinite(n) && String(v ?? '').trim() !== '' ? n : null; };
+  const ciste = [];
+  for (const [i, s] of lista.entries()) {
+    const naziv = String(s.naziv || '').trim().slice(0, 60);
+    const razredi = (s.razredi || []).map((x) => ({ do_kg: broj(x.do_kg), cijena_km: broj(x.cijena_km) }))
+      .filter((x) => x.do_kg !== null || x.cijena_km !== null);
+    if (!naziv && !razredi.length) continue;
+    if (!naziv) return res.status(400).json({ greska: `Upišite naziv ${i + 1}. pošte.` });
+    for (const x of razredi) {
+      if (x.do_kg === null || x.do_kg <= 0) return res.status(400).json({ greska: `${naziv}: upišite do koliko kg važi svaka cijena.` });
+      if (x.cijena_km === null || x.cijena_km < 0) return res.status(400).json({ greska: `${naziv}: upišite cijenu za razred do ${x.do_kg} kg.` });
+    }
+    razredi.sort((a, b) => a.do_kg - b.do_kg);
+    for (let j = 1; j < razredi.length; j++)
+      if (razredi[j].do_kg === razredi[j - 1].do_kg) return res.status(400).json({ greska: `${naziv}: razred do ${razredi[j].do_kg} kg je upisan dva puta.` });
+    ciste.push({ naziv, razredi });
+  }
+  await transakcija(async (db) => {
+    await db.query(`DELETE FROM kurirske_sluzbe WHERE otpad_id = $1`, [otpadId(req)]);
+    for (const [i, s] of ciste.entries()) {
+      const { rows: [k] } = await db.query(
+        `INSERT INTO kurirske_sluzbe (otpad_id, naziv, redoslijed) VALUES ($1,$2,$3) RETURNING id`, [otpadId(req), s.naziv, i]);
+      for (const x of s.razredi)
+        await db.query(`INSERT INTO kurir_cijene (sluzba_id, do_kg, cijena_km) VALUES ($1,$2,$3)`, [k.id, x.do_kg, x.cijena_km]);
+    }
+  });
+  res.json(await cjenovnik(otpadId(req)));
 }));
 
 // ---------- Telegram ----------
@@ -146,13 +187,24 @@ r.get('/dijelovi', asyncH(async (req, res) => {
   }
   const strana = Math.max(1, int(req.query.strana, 1));
   const { rows } = await q(`
-    SELECT d.*, m.naziv marka, g.naziv generacija, mo.naziv model, k.naziv kategorija
+    SELECT d.*, m.naziv marka, g.naziv generacija, mo.naziv model, k.naziv kategorija, t.naziv tip, t.tezina_kg tip_tezina_kg
     FROM dijelovi d LEFT JOIN marke m ON m.id = d.marka_id LEFT JOIN generacije g ON g.id = d.generacija_id
     LEFT JOIN modeli mo ON mo.id = g.model_id LEFT JOIN kategorije k ON k.id = d.kategorija_id
+    LEFT JOIN tipovi_dijelova t ON t.id = d.tip_id
     WHERE ${gdje} ORDER BY d.azuriran DESC LIMIT 50 OFFSET ${(strana - 1) * 50}`, p);
   const { rows: [{ ukupno }] } = await q(`SELECT COUNT(*)::int ukupno FROM dijelovi d WHERE ${gdje}`, p);
   res.json({ dijelovi: rows, ukupno, strana });
 }));
+
+// Tip dijela: izabran u formi ili prepoznat iz naziva
+async function tipZa(b) {
+  if (b.tip_id === '' || b.tip_id === null || b.tip_id === undefined) {
+    const t = nadjiTip(await ucitajTipove(), b.naziv);
+    return t ? t.id : null;
+  }
+  return int(b.tip_id);
+}
+const tezina = (v) => (v === '' || v == null || !Number.isFinite(Number(String(v).replace(',', '.'))) ? null : Number(String(v).replace(',', '.')));
 
 function poljaDijela(b) {
   return [
@@ -172,10 +224,10 @@ r.post('/dijelovi', asyncH(async (req, res) => {
   if (paket.slobodno <= 0)
     return res.status(403).json({ greska: `Besplatni paket dozvoljava ${paket.limit} dijelova u prodaji. Za više pređite na Pro paket.` });
   const { rows: [d] } = await q(
-    `INSERT INTO dijelovi (otpad_id, marka_id, generacija_id, kategorija_id, naziv, oem, oem_norm, stanje, km, godiste,
+    `INSERT INTO dijelovi (otpad_id, tip_id, tezina_kg, marka_id, generacija_id, kategorija_id, naziv, oem, oem_norm, stanje, km, godiste,
        motor, gorivo, vin_donora, cijena_km, kolicina, slike, opis, vanjska_sifra)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
-    [otpadId(req), ...v]
+     VALUES ($1,$19,$20,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+    [otpadId(req), ...v, await tipZa(req.body || {}), tezina(req.body?.tezina_kg)]
   );
   res.json(d);
 }));
@@ -188,9 +240,9 @@ r.put('/dijelovi/:id', asyncH(async (req, res) => {
   const { rows: [d] } = await q(
     `UPDATE dijelovi SET marka_id=$3, generacija_id=$4, kategorija_id=$5, naziv=$6, oem=$7, oem_norm=$8, stanje=$9,
        km=$10, godiste=$11, motor=$12, gorivo=$13, vin_donora=$14, cijena_km=$15, kolicina=$16, slike=$17, opis=$18,
-       vanjska_sifra=$19, status=$20, azuriran=NOW()
+       vanjska_sifra=$19, status=$20, tip_id=$21, tezina_kg=$22, azuriran=NOW()
      WHERE id = $1 AND otpad_id = $2 RETURNING *`,
-    [int(req.params.id), otpadId(req), ...v, status]
+    [int(req.params.id), otpadId(req), ...v, status, await tipZa(b), tezina(b.tezina_kg)]
   );
   if (!d) return res.status(404).json({ greska: 'Dio nije pronađen.' });
   res.json(d);

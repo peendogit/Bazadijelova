@@ -23,6 +23,7 @@ export function mapirajDio(p, baza) {
   const godiste = god ? (Number(god[1]) > 50 ? 1900 : 2000) + Number(god[1]) : null;
   return {
     sifra: String(p.id),
+    tip: p.type || null,
     naziv,
     oem: p.catalog || null,
     marka: p.make || null,

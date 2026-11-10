@@ -4,6 +4,7 @@ import { useApp } from '../store.jsx';
 import { SRBIJA } from '../api.js';
 import * as I from './Ikone.jsx';
 import DemoPrijava from './DemoPrijava.jsx';
+import { InstalirajStavka } from './Instaliraj.jsx';
 
 export default function Zaglavlje() {
   const { korisnik, odjava, korpa, sacuvano, valuta, sljedecaValuta } = useApp();
@@ -52,6 +53,7 @@ export default function Zaglavlje() {
             <Link to="/otpadi"><I.Lokacija width="20" />Otpadi</Link>
             <Link to="/sacuvano"><I.Zastavica width="20" />Sačuvano ({sacuvano.length})</Link>
             <Link to="/korpa"><I.Korpa width="20" />Korpa ({korpa.length})</Link>
+            <InstalirajStavka onKlik={() => setTimeout(zatvori, 0)} />
             <hr />
             {korisnik ? (
               <>

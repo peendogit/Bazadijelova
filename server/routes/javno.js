@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { q } from '../db/index.js';
 import { asyncH, int, normOem, KURS_EUR } from '../lib/util.js';
 import { POSTAVKE } from '../lib/paket.js';
+import { izracunaj, cjenovnik, opcije, TEZINA } from '../lib/postarina.js';
 import { ukljucen as tgUkljucen } from '../lib/telegram.js';
 
 const r = Router();
@@ -35,6 +36,19 @@ r.get('/marke/:slug', asyncH(async (req, res) => {
     WHERE mo.marka_id = $1
     GROUP BY mo.id ORDER BY mo.naziv`, [marka.id]);
   res.json({ ...marka, modeli });
+}));
+
+r.get('/tipovi', asyncH(async (_req, res) => {
+  const { rows } = await q(`
+    SELECT t.id, t.naziv, t.tezina_kg, t.kategorija_id, k.naziv kategorija
+    FROM tipovi_dijelova t LEFT JOIN kategorije k ON k.id = t.kategorija_id ORDER BY k.redoslijed NULLS LAST, t.naziv`);
+  res.json(rows);
+}));
+
+// Poštarina za stavke iz korpe: { stavke: [id...] } → po otpadu: težina i cijena svake pošte
+r.post('/postarina', asyncH(async (req, res) => {
+  const ids = [...new Set((req.body?.stavke || []).map((x) => int(x)).filter(Boolean))].slice(0, 100);
+  res.json(ids.length ? await izracunaj(ids) : []);
 }));
 
 r.get('/kategorije', asyncH(async (_req, res) => {
@@ -123,7 +137,7 @@ r.get('/dijelovi', asyncH(async (req, res) => {
 
 r.get('/dijelovi/:id', asyncH(async (req, res) => {
   const { rows: [dio] } = await q(`
-    SELECT d.*, m.naziv marka, m.slug marka_slug, mo.naziv model, g.naziv generacija, g.od_god, g.do_god,
+    SELECT d.*, ${TEZINA} tezina, (SELECT naziv FROM tipovi_dijelova WHERE id = d.tip_id) tip, m.naziv marka, m.slug marka_slug, mo.naziv model, g.naziv generacija, g.od_god, g.do_god,
            k.naziv kategorija, k.slug kategorija_slug,
            json_build_object('id', o.id, 'naziv', o.naziv, 'slug', o.slug, 'grad', o.grad, 'adresa', o.adresa,
              'telefon', o.telefon, 'email', o.email, 'lat', o.lat, 'lng', o.lng, 'opis', o.opis,
@@ -140,7 +154,9 @@ r.get('/dijelovi/:id', asyncH(async (req, res) => {
       `SELECT ${POLJA_LISTE} ${SPOJEVI} WHERE ${AKTIVAN} AND d.oem_norm = $1 AND d.id <> $2
        ORDER BY d.cijena_km LIMIT 8`, [dio.oem_norm, dio.id]));
   }
-  res.json({ ...dio, isti_oem: isti });
+  const sluzbe = await cjenovnik(dio.otpad_id);
+  const postarina = dio.tezina != null && sluzbe.length ? opcije(sluzbe, Number(dio.tezina)) : [];
+  res.json({ ...dio, isti_oem: isti, postarina });
 }));
 
 // ---------- Otpadi ----------

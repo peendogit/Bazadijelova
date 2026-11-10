@@ -12,7 +12,7 @@ import otpad, { UPLOADS } from './routes/otpad.js';
 import admin from './routes/admin.js';
 import apiUvoz from './routes/api-uvoz.js';
 import { KURS_EUR, asyncH } from './lib/util.js';
-import { ubaciMeta, sitemap, robots } from './lib/seo.js';
+import { ubaciMeta, sitemap, robots, sajt } from './lib/seo.js';
 import { pokreniPolling } from './lib/telegram.js';
 import { pokreniSinhronizaciju } from './lib/izvor.js';
 
@@ -43,6 +43,13 @@ const DIST = path.join(__dirname, '..', 'client', 'dist');
 if (fs.existsSync(DIST)) {
   const sablon = () => fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
   let html = sablon();
+  // Aplikacija za telefon: ime po domenu (Srbija = "Baza delova"), service worker bez keširanja
+  app.get('/manifest.webmanifest', (req, res) => {
+    const m = JSON.parse(fs.readFileSync(path.join(DIST, 'manifest.webmanifest'), 'utf8'));
+    if (sajt(req).srbija) Object.assign(m, { name: 'Baza delova', short_name: 'Baza delova', description: 'Polovni auto delovi iz otpada', lang: 'sr-Latn' });
+    res.type('application/manifest+json').set('Cache-Control', 'no-cache').send(JSON.stringify(m));
+  });
+  app.get('/sw.js', (_req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(DIST, 'sw.js')));
   app.use(express.static(DIST, { maxAge: '1h', index: false }));
   app.get('*', asyncH(async (req, res) => {
     if (process.env.NODE_ENV !== 'production') html = sablon();

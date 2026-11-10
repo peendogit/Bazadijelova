@@ -5,7 +5,7 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { pool, q, primijeniSemu } from './index.js';
-import { KATALOG, KATEGORIJE, DEMO_DIJELOVI } from './katalog-podaci.js';
+import { KATALOG, KATEGORIJE, DEMO_DIJELOVI, TIPOVI } from './katalog-podaci.js';
 import { slugify, normOem } from '../lib/util.js';
 
 async function katalog() {
@@ -37,6 +37,13 @@ async function katalog() {
         );
       }
     }
+  }
+  // Tipovi s težinom: dodaje samo nove, ne gazi ono što je admin izmijenio
+  for (const [naziv, kat, kg, kljucne] of TIPOVI) {
+    await q(
+      `INSERT INTO tipovi_dijelova (naziv, kategorija_id, tezina_kg, kljucne)
+       VALUES ($1, (SELECT id FROM kategorije WHERE slug = $2), $3, $4) ON CONFLICT (naziv) DO NOTHING`,
+      [naziv, kat, kg, kljucne]);
   }
   console.log('✓ Katalog upisan');
 }
@@ -83,6 +90,16 @@ async function demo() {
        ON CONFLICT (email) DO NOTHING`,
       [`${slug}@demo.ba`, lozinka, o.naziv, otpad.id]
     );
+    const { rows: [{ ks }] } = await q(`SELECT COUNT(*)::int ks FROM kurirske_sluzbe WHERE otpad_id = $1`, [otpad.id]);
+    if (!ks) {
+      for (const [i, [ime, razredi]] of [
+        ['Euro Express', [[2, 8], [5, 10], [10, 15], [20, 18], [30, 22], [50, 30]]],
+        ['X Express', [[5, 9], [10, 14], [20, 20], [40, 28]]],
+      ].entries()) {
+        const { rows: [k] } = await q(`INSERT INTO kurirske_sluzbe (otpad_id, naziv, redoslijed) VALUES ($1,$2,$3) RETURNING id`, [otpad.id, ime, i]);
+        for (const [kg, km] of razredi) await q(`INSERT INTO kurir_cijene (sluzba_id, do_kg, cijena_km) VALUES ($1,$2,$3)`, [k.id, kg, km]);
+      }
+    }
     const { rows: [{ n }] } = await q(`SELECT COUNT(*)::int n FROM dijelovi WHERE otpad_id = $1`, [otpad.id]);
     if (n > 0) continue;
 
@@ -106,6 +123,9 @@ async function demo() {
       `INSERT INTO korisnici (email, lozinka_hash, ime, telefon, uloga) VALUES ($1,$2,$3,'065 000 000',$4)
        ON CONFLICT (email) DO NOTHING`, [email, lozinka, ime, uloga]);
   }
+  // demo dijelovima dodijeli tip po nazivu
+  const { prepoznajTipove } = await import('../lib/tipovi.js');
+  await prepoznajTipove();
   console.log('✓ Demo otpadi, dijelovi, kupac@demo.ba i admin@demo.ba (lozinka za demo naloge: demo1234)');
 }
 

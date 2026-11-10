@@ -85,6 +85,7 @@ export default function Dio() {
                 {d.motor && <tr><td>Motor</td><td>{d.motor}</td></tr>}
                 {d.gorivo && <tr><td>Gorivo</td><td>{d.gorivo}</td></tr>}
                 {d.kategorija && <tr><td>Grupa</td><td>{d.kategorija}</td></tr>}
+                {d.tezina != null && <tr><td>Težina za slanje</td><td>{Number(d.tezina)} kg</td></tr>}
                 <tr><td>Šifra oglasa</td><td>#{d.id}</td></tr>
               </tbody>
             </table>
@@ -98,9 +99,22 @@ export default function Dio() {
                 <Zvjezdice ocjene={o.ocjene} malo />
                 <div className="red-info"><I.Lokacija />{[o.adresa, o.grad].filter(Boolean).join(', ')}</div>
                 {o.telefon && <div className="red-info"><I.Telefon /><a href={`tel:${o.telefon}`}>{o.telefon}</a></div>}
-                <div className="red-info"><I.Kamion />
-                  <span>Dostava {cijena(o.dostava_cijena_km)}{o.licno_preuzimanje ? ' · moguće lično preuzimanje' : ''}</span>
-                </div>
+                {d.postarina?.length > 0 ? (
+                  <div className="red-info" style={{ alignItems: 'flex-start' }}><I.Kamion />
+                    <div style={{ flex: 1 }}>
+                      <div>Poštarina za {Number(d.tezina)} kg{o.licno_preuzimanje ? ' · moguće lično preuzimanje' : ''}</div>
+                      {d.postarina.map((pp) => (
+                        <div key={pp.id} className="traka malo" style={{ margin: 0 }}>
+                          <span>{pp.naziv}</span><b>{pp.cijena_km === null ? 'po dogovoru' : cijena(pp.cijena_km)}</b>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="red-info"><I.Kamion />
+                    <span>Dostava {cijena(o.dostava_cijena_km)}{o.licno_preuzimanje ? ' · moguće lično preuzimanje' : ''}</span>
+                  </div>
+                )}
                 {o.dostava_info && <div className="tiho malo">{o.dostava_info}</div>}
               </div>
             </div>

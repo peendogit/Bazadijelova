@@ -1,5 +1,5 @@
 // Korpa: dijelovi grupisani po otpadu. Narudžba se šalje svakom otpadu posebno.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useApp } from '../store.jsx';
@@ -14,19 +14,35 @@ export default function Korpa() {
   const [salje, setSalje] = useState(false);
   const [gotovo, setGotovo] = useState(null);
   const p = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const [postarina, setPostarina] = useState([]);   // po otpadu: težina i cijene pošta
+  const [kuriri, setKuriri] = useState({});         // otpad_id → izabrana pošta
+
+  const kljuc = korpa.map((d) => d.id).join(',');
+  useEffect(() => {
+    if (!korpa.length) return setPostarina([]);
+    api('/postarina', { metoda: 'POST', tijelo: { stavke: korpa.map((d) => d.id) } }).then(setPostarina).catch(() => setPostarina([]));
+  }, [kljuc]);
 
   const poOtpadu = Object.values(korpa.reduce((acc, d) => {
-    (acc[d.otpad_id] ||= { otpad: d.otpad, grad: d.grad, dostava: d.dostava_cijena_km || 0, stavke: [] }).stavke.push(d);
+    (acc[d.otpad_id] ||= { otpad_id: d.otpad_id, otpad: d.otpad, grad: d.grad, pausal: d.dostava_cijena_km || 0, stavke: [] }).stavke.push(d);
     return acc;
-  }, {}));
+  }, {})).map((g) => {
+    const p = postarina.find((x) => x.otpad_id === g.otpad_id);
+    const opcije = p?.opcije || [];
+    const izbor = opcije.find((o) => o.id === kuriri[g.otpad_id]) || opcije[0] || null;
+    const dostava = izbor ? izbor.cijena_km : g.pausal;   // null = po dogovoru
+    return { ...g, tezina: p && !p.nepoznato ? p.tezina_kg : null, opcije, izbor, dostava };
+  });
   const dijelovi = korpa.reduce((s, d) => s + d.cijena_km, 0);
-  const dostava = nacin === 'dostava' ? poOtpadu.reduce((s, g) => s + g.dostava, 0) : 0;
+  const dostava = nacin === 'dostava' ? poOtpadu.reduce((s, g) => s + (g.dostava || 0), 0) : 0;
+  const poDogovoru = nacin === 'dostava' && poOtpadu.some((g) => g.dostava === null);
 
   async function naruci(e) {
     e.preventDefault();
     setGreska(''); setSalje(true);
     try {
-      const r = await api('/narudzbe', { metoda: 'POST', tijelo: { ...f, nacin, stavke: korpa.map((d) => d.id) } });
+      const izabrani = Object.fromEntries(poOtpadu.filter((g) => g.izbor).map((g) => [g.otpad_id, g.izbor.id]));
+      const r = await api('/narudzbe', { metoda: 'POST', tijelo: { ...f, nacin, kuriri: izabrani, stavke: korpa.map((d) => d.id) } });
       setGotovo(r.narudzbe);
       setKorpa([]);
     } catch (err) {
@@ -44,7 +60,7 @@ export default function Korpa() {
         {gotovo.map((n) => (
           <div key={n.id} className="traka" style={{ marginBottom: 0 }}>
             <span><b>{n.otpad}</b><br /><span className="tiho malo">Narudžba #{n.id} · <Link to={`/ocjena/${n.token}`}>link za ocjenu</Link></span></span>
-            <b>{cijena(n.ukupno_km + n.dostava_km)}</b>
+            <b>{cijena(n.ukupno_km + n.dostava_km)}{n.dostava_po_dogovoru ? ' + poštarina' : ''}</b>
           </div>
         ))}
       </div>
@@ -77,7 +93,24 @@ export default function Korpa() {
                     <button className="ikona-dugme" onClick={() => izbaciIzKorpe(d.id)} aria-label="Ukloni"><I.Zatvori /></button>
                   </div>
                 ))}
-                {nacin === 'dostava' && <div className="tiho malo" style={{ marginTop: 6 }}>Dostava od ovog otpada: {cijena(g.dostava)}</div>}
+                {nacin === 'dostava' && (
+                  <div className="dostava-otpada">
+                    {g.opcije.length > 0 ? (
+                      <>
+                        <div className="tiho malo">Paket {g.tezina} kg · izaberite brzu poštu:</div>
+                        {g.opcije.map((o) => (
+                          <label key={o.id} className={`opcija-poste ${g.izbor?.id === o.id ? 'izabrano' : ''}`}>
+                            <input type="radio" name={`posta-${g.otpad_id}`} checked={g.izbor?.id === o.id} onChange={() => setKuriri({ ...kuriri, [g.otpad_id]: o.id })} />
+                            <span>{o.naziv}</span>
+                            <b>{o.cijena_km === null ? 'po dogovoru' : cijena(o.cijena_km)}</b>
+                          </label>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="tiho malo">Dostava od ovog otpada: {cijena(g.pausal)}</div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             {poOtpadu.length > 1 && <div className="info">Dijelovi su iz {poOtpadu.length} otpada, pa svaki otpad šalje svoj paket i naplaćuje svoju dostavu.</div>}
@@ -109,8 +142,9 @@ export default function Korpa() {
             <textarea className="unos" rows="2" value={f.napomena} onChange={p('napomena')} />
             <div style={{ marginTop: 16 }}>
               <div className="ukupno"><span>Dijelovi ({korpa.length})</span><span>{cijena(dijelovi)}</span></div>
-              <div className="ukupno"><span>Dostava</span><span>{cijena(dostava)}</span></div>
+              <div className="ukupno"><span>Poštarina</span><span>{cijena(dostava)}{poDogovoru ? ' + po dogovoru' : ''}</span></div>
               <div className="ukupno glavno"><span>Ukupno</span><span>{cijena(dijelovi + dostava)}</span></div>
+              {poDogovoru && <div className="tiho malo">Paket je teži od cjenovnika pošte, otpad će vam javiti cijenu poštarine.</div>}
               <div className="tiho malo">Plaćanje pouzećem ili po dogovoru s otpadom.</div>
             </div>
             {greska && <div className="greska">{greska}</div>}

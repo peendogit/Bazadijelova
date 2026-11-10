@@ -210,3 +210,38 @@ CREATE TABLE IF NOT EXISTS ponude (
   kreiran     TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (zahtjev_id, otpad_id)
 );
+
+-- ===== v2.2: brza pošta i težine =====
+
+-- Tipovi dijelova s fiksnom težinom (upravlja admin). Ključne riječi služe za automatsko prepoznavanje iz naziva.
+CREATE TABLE IF NOT EXISTS tipovi_dijelova (
+  id            SERIAL PRIMARY KEY,
+  naziv         TEXT UNIQUE NOT NULL,
+  kategorija_id INTEGER REFERENCES kategorije(id) ON DELETE SET NULL,
+  tezina_kg     NUMERIC(7,2) NOT NULL,
+  kljucne       TEXT[] NOT NULL DEFAULT '{}'
+);
+
+ALTER TABLE dijelovi ADD COLUMN IF NOT EXISTS tip_id INTEGER REFERENCES tipovi_dijelova(id) ON DELETE SET NULL;
+ALTER TABLE dijelovi ADD COLUMN IF NOT EXISTS tezina_kg NUMERIC(7,2);   -- ručna težina, ima prednost nad tipom
+
+-- Cjenovnik brze pošte: svaki otpad ima svoje pošte, svaka pošta svoje razrede težine
+CREATE TABLE IF NOT EXISTS kurirske_sluzbe (
+  id         SERIAL PRIMARY KEY,
+  otpad_id   INTEGER NOT NULL REFERENCES otpadi(id) ON DELETE CASCADE,
+  naziv      TEXT NOT NULL,
+  redoslijed INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_kurir_otpad ON kurirske_sluzbe(otpad_id);
+
+CREATE TABLE IF NOT EXISTS kurir_cijene (
+  id        SERIAL PRIMARY KEY,
+  sluzba_id INTEGER NOT NULL REFERENCES kurirske_sluzbe(id) ON DELETE CASCADE,
+  do_kg     NUMERIC(7,2) NOT NULL,
+  cijena_km NUMERIC(10,2) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kurir_cijene ON kurir_cijene(sluzba_id, do_kg);
+
+ALTER TABLE narudzbe ADD COLUMN IF NOT EXISTS kurir TEXT;
+ALTER TABLE narudzbe ADD COLUMN IF NOT EXISTS tezina_kg NUMERIC(7,2);
+ALTER TABLE narudzbe ADD COLUMN IF NOT EXISTS dostava_po_dogovoru BOOLEAN NOT NULL DEFAULT FALSE;

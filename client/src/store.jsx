@@ -23,6 +23,19 @@ export function Provider({ children }) {
   const [sacuvano, setSacuvano] = useState(() => citaj('bd_sacuvano', [])); // isti oblik
   const [poruka, setPoruka] = useState(null);
 
+  // Instalacija aplikacije: Android/Chrome daje događaj, iPhone traži ručno "Dodaj na početni ekran"
+  const [instalacija, setInstalacija] = useState(null);
+  const instalirana = typeof window !== 'undefined' &&
+    (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true);
+  const iphone = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  useEffect(() => {
+    const uhvati = (e) => { e.preventDefault(); setInstalacija(e); };
+    const gotovo = () => setInstalacija(null);
+    window.addEventListener('beforeinstallprompt', uhvati);
+    window.addEventListener('appinstalled', gotovo);
+    return () => { window.removeEventListener('beforeinstallprompt', uhvati); window.removeEventListener('appinstalled', gotovo); };
+  }, []);
+
   useEffect(() => pisi('bd_valuta', valuta), [valuta]);
   useEffect(() => pisi('bd_korpa', korpa), [korpa]);
   useEffect(() => pisi('bd_sacuvano', sacuvano), [sacuvano]);
@@ -89,6 +102,7 @@ export function Provider({ children }) {
       korpa, setKorpa, uKorpi, dodajUKorpu, izbaciIzKorpe,
       sacuvano, jeSacuvan, prebaciSacuvano,
       poruka, obavijest,
+      instalacija, setInstalacija, instalirana, iphone,
     }}>
       {children}
     </Ctx.Provider>
